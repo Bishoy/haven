@@ -48,8 +48,10 @@
       applyConfig(config, true);
       return;
     }
+    // Check URL query parameter first (ha_token or token), then fall back to localStorage
+    var urlToken = getUrlParam('ha_token') || getUrlParam('token');
+    haToken = urlToken || localStorage.getItem('haven_token') || '';
     haUrl   = localStorage.getItem('haven_url')   || '';
-    haToken = localStorage.getItem('haven_token') || '';
 
     // If no URL in localStorage, default to the current origin.
     // HAven is normally hosted inside HA's www/ folder, so window.location.origin

@@ -1608,3 +1608,153 @@ html, body {
 .widget-weather-forecast .mdi {
   display: inline;
 }
+
+/* ---- High contrast error overlay --------------------------- */
+
+#haven-error-overlay {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  z-index: 2147483647;
+  background: #000;
+  color: #fff;
+  border: 4px solid #ffea00;
+  -webkit-box-shadow: 0 0 0 4px #000, 0 0 0 8px #ff0000;
+  box-shadow: 0 0 0 4px #000, 0 0 0 8px #ff0000;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 18px;
+  line-height: 1.35;
+  overflow: hidden;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+#haven-error-overlay.hidden {
+  display: none;
+}
+
+.haven-error-overlay-header {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  min-height: 58px;
+  padding: 10px 12px;
+  background: #ffea00;
+  color: #000;
+  border-bottom: 4px solid #ff0000;
+}
+
+.haven-error-overlay-title {
+  float: left;
+  font-size: 24px;
+  line-height: 38px;
+  font-weight: 800;
+}
+
+#haven-error-overlay-count {
+  display: inline-block;
+  min-width: 34px;
+  margin-left: 8px;
+  padding: 0 8px;
+  color: #fff;
+  background: #000;
+  text-align: center;
+}
+
+.haven-error-overlay-actions {
+  float: right;
+  white-space: nowrap;
+}
+
+.haven-error-overlay-actions button {
+  min-width: 76px;
+  min-height: 38px;
+  margin-left: 8px;
+  padding: 6px 12px;
+  border: 3px solid #000;
+  background: #fff;
+  color: #000;
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.haven-error-overlay-list {
+  position: absolute;
+  top: 82px;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px;
+  background: #000;
+}
+
+.haven-error-overlay-item {
+  margin: 0 0 14px;
+  border: 3px solid #fff;
+  background: #111;
+}
+
+.haven-error-overlay-meta {
+  padding: 8px 10px;
+  background: #ff0000;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.haven-error-overlay-message {
+  margin: 0;
+  padding: 10px;
+  color: #fff;
+  background: #000;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  font-family: Consolas, Menlo, monospace;
+  font-size: 17px;
+  line-height: 1.4;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+@media (max-width: 520px) {
+  #haven-error-overlay {
+    top: 4px;
+    right: 4px;
+    bottom: 4px;
+    left: 4px;
+    border-width: 3px;
+    font-size: 16px;
+  }
+
+  .haven-error-overlay-header {
+    min-height: 96px;
+  }
+
+  .haven-error-overlay-title,
+  .haven-error-overlay-actions {
+    float: none;
+  }
+
+  .haven-error-overlay-title {
+    font-size: 20px;
+    line-height: 28px;
+    margin-bottom: 8px;
+  }
+
+  .haven-error-overlay-actions button {
+    margin-left: 0;
+    margin-right: 8px;
+    font-size: 16px;
+  }
+
+  .haven-error-overlay-list {
+    top: 120px;
+  }
+}

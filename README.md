@@ -145,9 +145,29 @@ A graphical designer is available at `designer.html` on the same path. It requir
 
 ## Compatibility
 
-**Runtime (`index.html`):** any browser that can reach your HA instance. Tested on iPad Safari, budget Android WebViews, and smart TV browsers. Written in vanilla ES5 JavaScript with no framework dependencies.
+**Runtime (`index.html`):** any browser that can reach your HA instance. Tested on iPad Safari, budget Android WebViews, and smart TV browsers. Written in vanilla ES5 JavaScript with no framework dependencies. The build includes comprehensive ES5 polyfills for maximum compatibility with older devices.
 
 **Designer (`designer.html`):** Chrome or Edge 86+ required for save-to-disk (File System Access API). Must be opened over HTTPS. Nabu Casa remote access works out of the box.
+
+### Kindle Browser Compatibility
+
+HAven works on Kindle Fire tablets and e-readers with web browsers. If components don't render:
+
+1. **Network issues:** Kindles sometimes have stricter security policies off-home-network. Try accessing your Home Assistant via local IP instead of external domain.
+2. **JavaScript support:** Older Kindle firmware may have limitations. Clear the browser cache and hard-refresh (`Ctrl+Shift+R` or `Cmd+Shift+R`).
+3. **WebSocket connection:** Some Kindle browsers disconnect WebSocket after idle. If the dashboard loads but doesn't update, disable the screensaver and test without idle timeouts in device config.
+4. **Build artifacts:** Always use files from `dist/` when hosting on production devices. The `dist/app.js` includes ES5 transpilation and broad polyfills for maximum compatibility.
+
+## Build
+
+Generate a distributable copy with:
+
+```bash
+yarn install
+yarn build
+```
+
+The build uses Rollup and Babel to write a fresh `dist/` folder containing a copy of the repository contents, a Babel-transpiled `dist/app.js` with `console.log` statements removed, and a bundled `dist/designer.js` used by `dist/designer.html`. `dist/` is generated output and is ignored by git.
 
 ---
 

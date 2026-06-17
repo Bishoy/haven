@@ -12,6 +12,7 @@
   var currentPage = 1;
   var ws = null;
   var wsReconnectTimer = null;
+  var restFallbackTimer = null;
   var wsSubscriptionId = null;
   var wsCommandSubId   = null;
   var wsAuthenticated  = false;  // true only after auth_ok received
@@ -20,6 +21,19 @@
   var entityCallbacks = {};        // entityId -> [callback, ...] for current page
   var page0Callbacks  = {};        // entityId -> [callback, ...] persistent (page 0 widgets)
   var pendingRequests = {};  // msgId -> callback for all async WS responses (camera, agenda, tasks, weather)
+  var wsRequestMeta = {};    // msgId -> { label, optional } for useful overlay messages
+  var wsLastUrl = '';
+  var wsLastOpen = false;
+  var wsLastMessageType = 'none';
+  var wsLastErrorSeen = false;
+  var wsLastCloseCode = '';
+  var wsLastCloseReason = '';
+  var wsLastSendStatus = 'none';
+  var wsAuthSendAttempts = 0;
+  var wsAuthDiagnosticReported = false;
+  var wsHandshakeCloseReported = false;
+  var wsHandshakeCloseTimer = null;
+  var restStateFetchSucceeded = false;
   var activePageTimers      = [];  // setInterval IDs to clear on page change
   var entityStates = {};      // entityId -> stateObject (cached)
   var INTERNAL_CONN_ENTITY = 'internal.connectionstatus';
@@ -37,7 +51,17 @@
   var animationPauseBound = false;
   var haUrl = '';
   var haToken = '';
+  var credentialSource = 'none';
+  var authErrorReported = false;
+  var restAuthWarningReported = false;
+  var restAuthWarningTimer = null;
+  var restAuthWarningDetails = null;
   var configCacheBuster = null;
+  var REST_FALLBACK_POLL_MS = 30000;
+  var REST_POLL_WARNING_FAILURES = 3;
+  var restStatesPollFailureCount = 0;
+  var restStatesPollWarningReported = false;
+  var restStateLastSuccessAt = 'never';
 
   // ---- Init -------------------------------------------------
   function init() {
@@ -48,16 +72,25 @@
       applyConfig(config, true);
       return;
     }
-    // Check URL query parameter first (ha_token or token), then fall back to localStorage
-    var urlToken = getUrlParam('ha_token') || getUrlParam('token');
-    haToken = urlToken || localStorage.getItem('haven_token') || '';
-    haUrl   = localStorage.getItem('haven_url')   || '';
+    // Check URL query parameter first (ha_token or token), then fall back to localStorage.
+    // When a token is provided in the URL, treat the current page origin as the HA URL
+    // unless ha_url is explicitly provided. This avoids stale Kindle localStorage
+    // pointing state requests at a different host than the dashboard page.
+    var urlToken = cleanString(getUrlParam('ha_token') || getUrlParam('token') || '');
+    var urlHaUrl = cleanString(getUrlParam('ha_url') || getUrlParam('haurl') || '');
+    var pageOrigin = getCurrentOrigin();
+    haToken = urlToken || cleanString(localStorage.getItem('haven_token') || '');
+    haUrl   = urlToken
+      ? (urlHaUrl || pageOrigin)
+      : (urlHaUrl || cleanString(localStorage.getItem('haven_url') || ''));
+    credentialSource = urlToken ? 'URL parameter' : (haToken ? 'localStorage' : 'none');
 
-    // If no URL in localStorage, default to the current origin.
-    // HAven is normally hosted inside HA's www/ folder, so window.location.origin
+    // If no URL in localStorage, default to the current page origin.
+    // HAven is normally hosted inside HA's www/ folder, so the page origin
     // is the HA URL. An explicit ha_url in the device config or localStorage
     // overrides this for non-standard deployments.
-    if (!haUrl) haUrl = window.location.origin;
+    if (!haUrl) haUrl = pageOrigin;
+    haUrl = normalizeHaUrl(haUrl);
 
     console.log('HAven init: url=' + haUrl + ' tokenLength=' + haToken.length);
 
@@ -71,7 +104,7 @@
   // (allows pre-configured tokens to be updated centrally via the JSON file).
   // Falls back to localStorage token, then shows setup if neither is present.
   function loadConfigForCredentials() {
-    var deviceParam = getUrlParam('device') || 'default';
+    var deviceParam = normalizeDeviceParam(getUrlParam('device'), 'default');
     var base        = window.location.pathname.replace(/\/[^\/]*$/, '/');
     var configUrl   = base + 'devices/' + deviceParam + '.json?v=' + getConfigCacheBuster();
 
@@ -97,8 +130,8 @@
         return;
       }
 
-      var credUrl   = (data.device && data.device.ha_url)   || '';
-      var credToken = (data.device && data.device.ha_token) || '';
+      var credUrl   = normalizeHaUrl((data.device && data.device.ha_url) || '');
+      var credToken = cleanString((data.device && data.device.ha_token) || '');
 
       console.log('HAven init: config loaded, credUrl=' + credUrl + ' credTokenLength=' + credToken.length);
 
@@ -106,6 +139,7 @@
         // Config token takes priority - update localStorage so it stays in sync
         if (credUrl) haUrl = credUrl;
         haToken = credToken;
+        credentialSource = 'device config';
         localStorage.setItem('haven_url',   haUrl);
         localStorage.setItem('haven_token', haToken);
         console.log('HAven init: credentials from device config, url=' + haUrl);
@@ -131,13 +165,13 @@
     var saveBtn    = document.getElementById('setup-save');
     var errorEl    = document.getElementById('setup-error');
 
-    // Pre-fill URL from localStorage or current origin as a sensible default
-    urlInput.value   = haUrl || window.location.origin;
+    // Pre-fill URL from localStorage or current page origin as a sensible default
+    urlInput.value   = haUrl || getCurrentOrigin();
     tokenInput.value = haToken;
 
     saveBtn.addEventListener('click', function () {
-      var url   = urlInput.value.trim().replace(/\/$/, '');
-      var token = tokenInput.value.trim();
+      var url   = normalizeHaUrl(urlInput.value);
+      var token = cleanString(tokenInput.value);
       errorEl.textContent = '';
 
       if (!url)   { errorEl.textContent = 'Please enter your Home Assistant URL.'; return; }
@@ -153,7 +187,7 @@
 
   // ---- Config loading ---------------------------------------
   function loadConfig() {
-    var deviceParam = getUrlParam('device');
+    var deviceParam = normalizeDeviceParam(getUrlParam('device'), '');
     var base        = window.location.pathname.replace(/\/[^\/]*$/, '/');
 
     if (deviceParam) {
@@ -209,6 +243,7 @@
       }
     }
     renderPage(startPage);
+    fetchAllStatesRest();
     if (!isPreview) connectWebSocket();
     startClock();
     startInternalTime();
@@ -278,22 +313,284 @@
     document.body.appendChild(landing);
   }
 
+  function reportHavenError(type, message) {
+    if (window.HAVEN_REPORT_ERROR) {
+      window.HAVEN_REPORT_ERROR(type, message);
+    }
+  }
+
+  function formatErrorForOverlay(value) {
+    if (value === null) return 'null';
+    if (value === undefined) return 'undefined';
+    if (value && value.stack) return String(value.stack);
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    try { return JSON.stringify(value); } catch (e) {}
+    try { return String(value); } catch (err) {}
+    return '[unprintable value]';
+  }
+
+  function trackWsRequest(id, label, optional) {
+    if (!id) return;
+    wsRequestMeta[id] = {
+      label: label || 'WebSocket request',
+      optional: !!optional
+    };
+  }
+
+  function takeWsRequestMeta(id) {
+    var meta = id ? wsRequestMeta[id] : null;
+    if (id && wsRequestMeta[id]) delete wsRequestMeta[id];
+    return meta;
+  }
+
+  function isWsUnauthorized(error) {
+    var code = error && error.code !== undefined ? String(error.code).toLowerCase() : '';
+    var message = error && error.message !== undefined ? String(error.message).toLowerCase() : '';
+    return code === 'unauthorized' || message.indexOf('unauthorized') !== -1;
+  }
+
+  function formatWsResultError(msg, meta) {
+    var label = meta && meta.label ? meta.label : 'untracked WebSocket request';
+    return 'id=' + msg.id + '\nrequest=' + label + '\n' + formatErrorForOverlay(msg.error || msg);
+  }
+
+  function isAuthStatus(status) {
+    return status === 401 || status === 403;
+  }
+
+  function getTokenShape(token) {
+    var value = cleanString(token || '');
+    if (!value) return 'empty';
+    var parts = value.split('.');
+    var lens = [];
+    for (var i = 0; i < parts.length; i++) lens.push(parts[i].length);
+    return parts.length + ' parts (' + lens.join('/') + ')';
+  }
+
+  function getTokenFingerprint(token) {
+    var value = cleanString(token || '');
+    if (!value) return 'empty';
+    var hash = 2166136261;
+    for (var i = 0; i < value.length; i++) {
+      hash ^= value.charCodeAt(i);
+      hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+      hash = hash >>> 0;
+    }
+    return 'fnv32:' + ('0000000' + hash.toString(16)).slice(-8);
+  }
+
+  function getWebSocketStateLabel() {
+    if (!ws) return 'not created';
+    var state = ws.readyState;
+    if (state === 0) return 'connecting';
+    if (state === 1) return 'open';
+    if (state === 2) return 'closing';
+    if (state === 3) return 'closed';
+    return String(state);
+  }
+
+  function getWebSocketCloseLabel() {
+    if (wsLastCloseCode === '') return 'none';
+    return wsLastCloseCode + (wsLastCloseReason ? ' ' + wsLastCloseReason : '');
+  }
+
+  function getAuthDiagnosticLines() {
+    return [
+      'Credential source: ' + credentialSource,
+      'Home Assistant URL: ' + (haUrl || '(empty)'),
+      'Page origin: ' + (getCurrentOrigin() || '(empty)'),
+      'Token length: ' + (haToken ? haToken.length : 0),
+      'Token shape: ' + getTokenShape(haToken),
+      'Token fingerprint: ' + getTokenFingerprint(haToken),
+      'REST URL mode: ' + getRestUrlMode(),
+      'REST state loaded: ' + (restStateFetchSucceeded ? 'yes' : 'no'),
+      'REST last success: ' + restStateLastSuccessAt,
+      'REST poll failures: ' + restStatesPollFailureCount,
+      'WebSocket supported: ' + (window.WebSocket ? 'yes' : 'no'),
+      'WebSocket URL: ' + (wsLastUrl || '(not created)'),
+      'WebSocket opened: ' + (wsLastOpen ? 'yes' : 'no'),
+      'WebSocket authenticated: ' + (wsAuthenticated ? 'yes' : 'no'),
+      'WebSocket state: ' + getWebSocketStateLabel(),
+      'WebSocket last message: ' + (wsLastMessageType || 'none'),
+      'WebSocket auth sends: ' + wsAuthSendAttempts,
+      'WebSocket last send: ' + wsLastSendStatus,
+      'WebSocket error event: ' + (wsLastErrorSeen ? 'yes' : 'no'),
+      'WebSocket close: ' + getWebSocketCloseLabel()
+    ];
+  }
+
+  function handleAuthFailure(source, details) {
+    if (authErrorReported) return;
+    authErrorReported = true;
+    if (restAuthWarningTimer) {
+      clearTimeout(restAuthWarningTimer);
+      restAuthWarningTimer = null;
+    }
+    wsAuthenticated = false;
+    stopRestFallbackPolling();
+    setConnStatus('disconnected');
+    reportHavenError('AUTH ERROR', [
+      'Home Assistant rejected the access token.',
+      '',
+      details || source || 'Authentication failed.',
+      ''
+    ].concat(getAuthDiagnosticLines()).concat([
+      '',
+      'Fix: create or paste a new Long-Lived Access Token for this Home Assistant user.',
+      'If Credential source is device config, update or remove device.ha_token in the JSON file.',
+      'If Credential source is localStorage, use the setup screen to save the new token.'
+    ]).join('\n'));
+    showSetup();
+  }
+
+  function handleRestAuthWarning(source, details) {
+    if (authErrorReported || restAuthWarningReported || wsAuthenticated) return;
+    restAuthWarningDetails = {
+      source: source,
+      details: details
+    };
+    if (restAuthWarningTimer) return;
+    restAuthWarningTimer = setTimeout(function() {
+      restAuthWarningTimer = null;
+      if (authErrorReported || restAuthWarningReported || wsAuthenticated) return;
+      restAuthWarningReported = true;
+      var pending = restAuthWarningDetails || {};
+      restAuthWarningDetails = null;
+      reportRestAuthWarning(pending.source, pending.details);
+    }, 7000);
+  }
+
+  function reportRestAuthWarning(source, details) {
+    reportHavenError('REST AUTH WARNING', [
+      'Home Assistant returned 401/403 for a REST request.',
+      '',
+      details || source || 'REST authentication failed.',
+      ''
+    ].concat(getAuthDiagnosticLines()).concat([
+      '',
+      'WebSocket auth will still be checked. If WebSocket connects, this warning can be ignored.',
+      'If WebSocket also returns auth_invalid, create a new Long-Lived Access Token.'
+    ]).join('\n'));
+  }
+
+  function markRestStateFetchSucceeded() {
+    restStateFetchSucceeded = true;
+    restStateLastSuccessAt = getIsoTimestamp();
+    restStatesPollFailureCount = 0;
+    restStatesPollWarningReported = false;
+    restAuthWarningDetails = null;
+    if (restAuthWarningTimer) {
+      clearTimeout(restAuthWarningTimer);
+      restAuthWarningTimer = null;
+    }
+    if (wsHandshakeCloseTimer) {
+      clearTimeout(wsHandshakeCloseTimer);
+      wsHandshakeCloseTimer = null;
+    }
+  }
+
+  function scheduleWsHandshakeClosedReport() {
+    if (wsHandshakeCloseReported || restStateFetchSucceeded) return;
+    if (wsHandshakeCloseTimer) return;
+    wsHandshakeCloseTimer = setTimeout(function() {
+      wsHandshakeCloseTimer = null;
+      if (wsHandshakeCloseReported || restStateFetchSucceeded || wsAuthenticated) return;
+      wsHandshakeCloseReported = true;
+      reportHavenError('WEBSOCKET HANDSHAKE WARNING', [
+        'WebSocket closed before Home Assistant sent auth_required.',
+        '',
+        'The token was not checked on this WebSocket attempt, and REST state fallback has not succeeded yet.',
+        ''
+      ].concat(getAuthDiagnosticLines()).concat([
+        '',
+        'This usually means the Kindle browser, a proxy, or the network path cannot keep the Home Assistant WebSocket open.'
+      ]).join('\n'));
+    }, 8000);
+  }
+
+  function getIsoTimestamp() {
+    try { return new Date().toISOString(); } catch (e) {}
+    return String(new Date());
+  }
+
+  function formatXhrFailure(xhr, url, fallback) {
+    var lines = [
+      fallback || 'Request failed.',
+      'URL: ' + url,
+      'REST URL mode: ' + getRestUrlMode()
+    ];
+    if (xhr) {
+      lines.push('HTTP status: ' + xhr.status);
+      lines.push('Status text: ' + (xhr.statusText || '(empty)'));
+      lines.push('Ready state: ' + xhr.readyState);
+      if (xhr.responseText) {
+        lines.push('Response: ' + String(xhr.responseText).slice(0, 240));
+      }
+    }
+    return lines.join('\n');
+  }
+
+  function reportRestStatesPollFailure(details) {
+    restStatesPollFailureCount += 1;
+
+    if (restStateFetchSucceeded && restStatesPollFailureCount < REST_POLL_WARNING_FAILURES) return;
+    if (restStateFetchSucceeded && restStatesPollWarningReported) return;
+
+    if (restStateFetchSucceeded) {
+      restStatesPollWarningReported = true;
+      reportHavenError('REST POLL WARNING', [
+        'REST state polling has failed repeatedly after a successful load.',
+        '',
+        details,
+        '',
+        'Last successful REST state load: ' + restStateLastSuccessAt,
+        'Consecutive poll failures: ' + restStatesPollFailureCount,
+        '',
+        'The dashboard may keep showing cached state until the next successful poll.'
+      ].concat(getAuthDiagnosticLines()).join('\n'));
+      return;
+    }
+
+    reportHavenError('REST STATES ERROR', [
+      'REST state polling failed before any successful state load.',
+      '',
+      details
+    ].concat(getAuthDiagnosticLines()).join('\n'));
+  }
+
   function fetchJson(url, callback) {
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', url, true);
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState !== 4) return;
-      if (xhr.status === 200) {
-        try {
-          callback(null, JSON.parse(xhr.responseText));
-        } catch (e) {
-          callback('JSON parse error: ' + e.message);
+    var done = false;
+
+    function finish(err, data) {
+      if (done) return;
+      done = true;
+      if (err) reportHavenError('FETCH ERROR', url + '\n' + err);
+      callback(err, data);
+    }
+
+    try {
+      xhr.open('GET', url, true);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState !== 4) return;
+        if (xhr.status === 200) {
+          try {
+            finish(null, JSON.parse(xhr.responseText));
+          } catch (e) {
+            finish('JSON parse error: ' + e.message);
+          }
+        } else {
+          finish('HTTP ' + xhr.status);
         }
-      } else {
-        callback('HTTP ' + xhr.status);
-      }
-    };
-    xhr.send();
+      };
+      xhr.onerror = function () {
+        finish('Network error');
+      };
+      xhr.send();
+    } catch (e) {
+      finish(e && e.message ? e.message : e);
+    }
   }
 
   // Always bust config file cache on page refresh to reflect JSON edits immediately
@@ -1170,14 +1467,27 @@
       el.style.padding           = '4px';     // small vertical breathing room
     }
     var text = w.text !== undefined ? String(w.text) : '';
+    var initialText = text;
+    var hasTemplateText = hasTemplate(text);
+    var hasPrimaryInitialState = !w.entity || !!entityStates[w.entity];
+    var hasSecondaryInitialState = !w.entity2 || !!entityStates[w.entity2];
+    if ((w.entity || w.entity2) && hasTemplateText && hasPrimaryInitialState && hasSecondaryInitialState) {
+      initialText = applyTemplate(
+        text,
+        w.entity ? (entityStates[w.entity] || null) : null,
+        w.entity2 ? (entityStates[w.entity2] || null) : null
+      );
+    } else if ((w.entity || w.entity2) && hasTemplateText) {
+      initialText = text.replace(/\{\{[\s\S]*?\}\}/g, '--');
+    }
 
     // Single raw FA codepoint (legacy) - apply font directly
-    if (text.length === 1 && text.charCodeAt(0) >= 0xF000 && text.charCodeAt(0) <= 0xF8FF) {
+    if (initialText.length === 1 && initialText.charCodeAt(0) >= 0xF000 && initialText.charCodeAt(0) <= 0xF8FF) {
       el.style.fontFamily = 'FontAwesome';
-      setContent(el, text);
+      setContent(el, initialText);
     } else {
       // Handles plain text and [fa-name] icon tokens
-      setContent(el, text);
+      setContent(el, initialText);
     }
 
     // Labels without actions are transparent to taps - let clicks pass to widgets below
@@ -1190,8 +1500,8 @@
       // Cache both states so whichever entity fires last can pass both to the update.
       // entity  = primary: drives format, overrides, and state/state_str/attr in templates.
       // entity2 = secondary: triggers re-renders and exposes state2/state_str2/attr2.
-      var stateCache  = null;
-      var state2Cache = null;
+      var stateCache  = w.entity  ? (entityStates[w.entity]  || null) : null;
+      var state2Cache = w.entity2 ? (entityStates[w.entity2] || null) : null;
 
       // Use var expression, not function declaration — declarations inside if blocks
       // are illegal in ES5 strict mode and behave inconsistently across browsers.
@@ -1212,6 +1522,8 @@
           doLabelUpdate();
         });
       }
+
+      if (stateCache || state2Cache) doLabelUpdate();
     }
   }
 
@@ -3759,23 +4071,29 @@
     }
 
     function requestCalendar(entityId, startIso, endIso, cb, timerRef) {
-      var url = haUrl + '/api/calendars/' + entityId +
+      var url = getHaApiUrl('/api/calendars/' + entityId +
         '?start=' + encodeURIComponent(startIso) +
-        '&end=' + encodeURIComponent(endIso);
+        '&end=' + encodeURIComponent(endIso));
 
       var xhr = new XMLHttpRequest();
       xhr.open('GET', url, true);
       xhr.setRequestHeader('Authorization', 'Bearer ' + haToken);
       xhr.onload = function() {
         if (xhr.status !== 200) {
+          reportHavenError('CALENDAR REST ERROR', entityId + '\nHTTP ' + xhr.status + '\n' + url);
           cb([]);
           return;
         }
         var data = null;
-        try { data = JSON.parse(xhr.responseText); } catch (e) {}
+        try { data = JSON.parse(xhr.responseText); } catch (e) {
+          reportHavenError('CALENDAR JSON ERROR', entityId + '\n' + e.message);
+        }
         cb(extractEvents(data, entityId));
       };
-      xhr.onerror = function() { cb([]); };
+      xhr.onerror = function() {
+        reportHavenError('CALENDAR REST ERROR', entityId + '\nNetwork error\n' + url);
+        cb([]);
+      };
       xhr.send();
     }
 
@@ -4517,7 +4835,7 @@
         // call_service with return_response:true wraps service data under result.response
         var response = (result.response !== undefined) ? result.response : result;
         var data     = response[entityId] || response;
-        var items    = (data && Array.isArray(data.items)) ? data.items : [];
+        var items    = (data && isArray(data.items)) ? data.items : [];
         cb(items);
       };
       wsSend({
@@ -5020,8 +5338,8 @@
       var token = state && state.attributes && state.attributes.access_token;
 
       if (token) {
-        var url = haUrl + '/api/camera_proxy/' + entity
-                + '?token=' + token + '&t=' + Date.now();
+        var url = getHaApiUrl('/api/camera_proxy/' + entity
+                + '?token=' + token + '&t=' + Date.now());
         var nextImg = new Image();
         nextImg.onload = function() {
           if (!active) return;
@@ -6188,6 +6506,9 @@
     var key = String(expr).trim();
     if (!key) return '';
 
+    var simple = evaluateSimpleTemplateExpression(key, state, state2);
+    if (simple.matched) return simple.value;
+
     var fn = templateExprCache[key];
     if (!fn) {
       try {
@@ -6224,6 +6545,45 @@
     } catch (e2) {
       return '';
     }
+  }
+
+  function evaluateSimpleTemplateExpression(key, state, state2) {
+    var raw = state ? state.state : null;
+    var num = parseFloat(raw);
+    var stateVal = (!isNaN(num) ? num : raw);
+    var stateStr = (raw !== null && raw !== undefined) ? String(raw) : '';
+    var attrs = state && state.attributes ? state.attributes : {};
+
+    var raw2 = state2 ? state2.state : null;
+    var num2 = parseFloat(raw2);
+    var stateVal2 = (raw2 !== null && !isNaN(num2) ? num2 : raw2);
+    var stateStr2 = (raw2 !== null && raw2 !== undefined) ? String(raw2) : '';
+    var attrs2 = state2 && state2.attributes ? state2.attributes : {};
+
+    if (key === 'state') return { matched: true, value: stateVal };
+    if (key === 'state_str') return { matched: true, value: stateStr };
+    if (key === 'state2') return { matched: true, value: stateVal2 };
+    if (key === 'state_str2') return { matched: true, value: stateStr2 };
+
+    var m = key.match(/^(attr|attr2)\.([A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*)$/);
+    if (m) {
+      return {
+        matched: true,
+        value: getPathValue(m[1] === 'attr2' ? attrs2 : attrs, m[2])
+      };
+    }
+
+    return { matched: false, value: null };
+  }
+
+  function getPathValue(obj, path) {
+    var cur = obj;
+    var parts = String(path).split('.');
+    for (var i = 0; i < parts.length; i++) {
+      if (cur === null || cur === undefined) return null;
+      cur = cur[parts[i]];
+    }
+    return cur;
   }
 
   function tmplRound(val, decimals) {
@@ -6485,13 +6845,20 @@
       last_updated: now
     };
     entityStates[entityId] = obj;
+    notifyEntityCallbacks(entityId, obj);
+  }
+
+  function notifyEntityCallbacks(entityId, state) {
+    if (!entityId || !state) return;
+
     if (entityCallbacks[entityId]) {
       var cbs = entityCallbacks[entityId];
-      for (var i = 0; i < cbs.length; i++) cbs[i](obj);
+      for (var i = 0; i < cbs.length; i++) cbs[i](state);
     }
+
     if (page0Callbacks[entityId]) {
       var p0cbs = page0Callbacks[entityId];
-      for (var p0 = 0; p0 < p0cbs.length; p0++) p0cbs[p0](obj);
+      for (var p0 = 0; p0 < p0cbs.length; p0++) p0cbs[p0](state);
     }
   }
 
@@ -6508,94 +6875,235 @@
       if (w.stream_entity)   entities[w.stream_entity]   = true;
     }
 
+    // Fetch current values over REST immediately. This gives older Kindle/Silk
+    // browsers a working first paint even when the WebSocket never authenticates.
+    fetchEntityStates(entities);
+
     // If WS is ready, subscribe to state_changed for these entities
     if (ws && ws.readyState === 1) {
       subscribeStateChanged();
-      // Fetch current states for all referenced entities
-      for (var entityId in entities) {
-        if (entities.hasOwnProperty(entityId)) {
-          fetchEntityState(entityId);
-        }
+    }
+  }
+
+  function isInternalEntity(entityId) {
+    return !!entityId && String(entityId).indexOf('internal.') === 0;
+  }
+
+  function fetchEntityStates(entities) {
+    if (!entities) return;
+    for (var entityId in entities) {
+      if (entities.hasOwnProperty(entityId)) {
+        fetchEntityState(entityId);
       }
     }
   }
 
   function fetchEntityState(entityId) {
+    if (!entityId || isInternalEntity(entityId) || !haUrl || !haToken || authErrorReported) return;
+
     // Fetch a single entity's current state via REST - avoids re-fetching all states
-    var url = haUrl + '/api/states/' + entityId;
+    var url = getHaApiUrl('/api/states/' + entityId);
     var xhr = new XMLHttpRequest();
     xhr.open('GET', url, true);
     xhr.setRequestHeader('Authorization', 'Bearer ' + haToken);
-    xhr.onload = function() {
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState !== 4) return;
       if (xhr.status === 200) {
         try {
           var state = JSON.parse(xhr.responseText);
           entityStates[state.entity_id] = state;
-          if (entityCallbacks[state.entity_id]) {
-            var cbs = entityCallbacks[state.entity_id];
-            for (var i = 0; i < cbs.length; i++) cbs[i](state);
-          }
-        } catch(e) {}
+          notifyEntityCallbacks(state.entity_id, state);
+          markRestStateFetchSucceeded();
+        } catch(e) {
+          reportHavenError('REST JSON ERROR', entityId + '\n' + e.message);
+        }
+      } else if (isAuthStatus(xhr.status)) {
+        handleRestAuthWarning('REST state fetch', entityId + '\nHTTP ' + xhr.status + '\n' + url);
+      } else {
+        reportHavenError('REST STATE ERROR', entityId + '\nHTTP ' + xhr.status + '\n' + url);
       }
+    };
+    xhr.onerror = function() {
+      reportHavenError('REST STATE ERROR', entityId + '\nNetwork error\n' + url);
     };
     xhr.send();
   }
 
+  function fetchAllStatesRest() {
+    if (!haUrl || !haToken || authErrorReported) return;
+
+    var url = getHaApiUrl('/api/states');
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + haToken);
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState !== 4) return;
+      if (xhr.status !== 200) {
+        if (isAuthStatus(xhr.status)) {
+          handleRestAuthWarning('REST states fetch', formatXhrFailure(xhr, url, 'REST states fetch returned HTTP ' + xhr.status + '.'));
+          return;
+        }
+        reportRestStatesPollFailure(formatXhrFailure(xhr, url, 'REST states fetch returned HTTP ' + xhr.status + '.'));
+        return;
+      }
+      try {
+        var states = JSON.parse(xhr.responseText);
+        if (!isArray(states)) return;
+        markRestStateFetchSucceeded();
+        for (var i = 0; i < states.length; i++) {
+          var state = states[i];
+          if (!state || !state.entity_id) continue;
+          entityStates[state.entity_id] = state;
+          notifyEntityCallbacks(state.entity_id, state);
+        }
+      } catch (e) {
+        reportHavenError('REST STATES JSON ERROR', e.message);
+      }
+    };
+    xhr.onerror = function() {
+      reportRestStatesPollFailure(formatXhrFailure(xhr, url, 'REST states fetch hit a network error.'));
+    };
+    xhr.send();
+  }
+
+  function startRestFallbackPolling() {
+    if (restFallbackTimer || !haToken || authErrorReported) return;
+    fetchAllStatesRest();
+    restFallbackTimer = setInterval(function() {
+      if (!wsAuthenticated) fetchAllStatesRest();
+    }, REST_FALLBACK_POLL_MS);
+  }
+
+  function stopRestFallbackPolling() {
+    if (!restFallbackTimer) return;
+    clearInterval(restFallbackTimer);
+    restFallbackTimer = null;
+  }
+
   // ---- WebSocket connection ---------------------------------
   function connectWebSocket() {
+    if (authErrorReported) return;
     setConnStatus('connecting');
 
     var wsUrl = haUrl.replace(/^http/, 'ws') + '/api/websocket';
+    wsLastUrl = wsUrl;
+    wsLastOpen = false;
+    wsLastMessageType = 'none';
+    wsLastErrorSeen = false;
+    wsLastCloseCode = '';
+    wsLastCloseReason = '';
+    wsLastSendStatus = 'none';
+    wsAuthSendAttempts = 0;
 
     try {
       ws = new WebSocket(wsUrl);
     } catch (e) {
+      reportHavenError('WEBSOCKET ERROR', wsUrl + '\n' + (e && e.message ? e.message : e));
       setConnStatus('disconnected');
+      startRestFallbackPolling();
       scheduleReconnect();
       return;
     }
+    var socketRef = ws;
 
     ws.onopen = function () {
+      wsLastOpen = true;
       // HA WS protocol: first message is auth_required
     };
 
     ws.onmessage = function (evt) {
       var msg;
-      try { msg = JSON.parse(evt.data); } catch (e) { return; }
+      try { msg = JSON.parse(evt.data); } catch (e) {
+        reportHavenError('WEBSOCKET JSON ERROR', e.message + '\n' + evt.data);
+        return;
+      }
+      wsLastMessageType = msg && msg.type ? msg.type : '(no type)';
       handleWsMessage(msg);
     };
 
     ws.onerror = function () {
+      wsLastErrorSeen = true;
+      reportHavenError('WEBSOCKET ERROR', wsUrl);
       setConnStatus('disconnected');
+      startRestFallbackPolling();
     };
 
-    ws.onclose = function () {
+    ws.onclose = function (evt) {
+      var wasAuthenticated = wsAuthenticated;
+      wsLastCloseCode = evt && evt.code !== undefined ? String(evt.code) : 'unknown';
+      wsLastCloseReason = evt && evt.reason ? String(evt.reason) : '';
       wsAuthenticated = false;
       setConnStatus('disconnected');
+      startRestFallbackPolling();
+      if (!wasAuthenticated && wsLastMessageType === 'none' && !wsHandshakeCloseReported) {
+        scheduleWsHandshakeClosedReport();
+      }
       scheduleReconnect();
     };
+
+    setTimeout(function() {
+      if (ws === socketRef && !wsAuthenticated) startRestFallbackPolling();
+    }, 5000);
+
+    setTimeout(function() {
+      if (ws !== socketRef || wsAuthenticated || restStateFetchSucceeded || wsAuthDiagnosticReported) return;
+      wsAuthDiagnosticReported = true;
+      reportHavenError('WEBSOCKET AUTH PENDING', [
+        'WebSocket did not complete Home Assistant authentication.',
+        ''
+      ].concat(getAuthDiagnosticLines()).concat([
+        '',
+        'If the last message is none, the Kindle never reached Home Assistant WebSocket handshake.',
+        'If the last message is auth_required and auth sends is 0, the Kindle could not send the auth message.',
+        'If the last message is auth_required and auth sends is above 0, Home Assistant did not answer the auth message.',
+        'If the socket never opened, the Kindle browser or network path is blocking WebSocket.'
+      ]).join('\n'));
+    }, 12000);
   }
 
   // Safe WebSocket send - never throws even if socket is closing
   function wsSend(payload) {
+    var type = payload && payload.type ? payload.type : 'unknown';
     try {
       if (ws && ws.readyState === 1) {
         ws.send(JSON.stringify(payload));
+        wsLastSendStatus = type + ' sent';
+        return true;
       }
+      wsLastSendStatus = type + ' skipped; state=' + getWebSocketStateLabel();
     } catch(e) {
+      wsLastSendStatus = type + ' failed; ' + (e && e.message ? e.message : e);
       console.warn('HAven: wsSend failed:', e.message);
     }
+    return false;
+  }
+
+  function sendWebSocketAuthWithRetry(socketRef, delayMs) {
+    setTimeout(function() {
+      if (ws !== socketRef || wsAuthenticated || authErrorReported) return;
+      wsAuthSendAttempts += 1;
+      if (!wsSend({ type: 'auth', access_token: haToken }) && wsAuthSendAttempts < 3) {
+        sendWebSocketAuthWithRetry(socketRef, 350);
+      }
+    }, delayMs || 0);
   }
 
   function handleWsMessage(msg) {
     switch (msg.type) {
       case 'auth_required':
         console.log('HAven: authenticating, token length:', haToken.length);
-        wsSend({ type: 'auth', access_token: haToken });
+        sendWebSocketAuthWithRetry(ws, 0);
         break;
 
       case 'auth_ok':
+        authErrorReported = false;
+        restAuthWarningDetails = null;
+        if (restAuthWarningTimer) {
+          clearTimeout(restAuthWarningTimer);
+          restAuthWarningTimer = null;
+        }
         wsAuthenticated = true;
+        stopRestFallbackPolling();
         setConnStatus('connected');
         fetchAllStates();
         subscribeStateChanged();
@@ -6603,33 +7111,33 @@
         break;
 
       case 'auth_invalid':
-        // Do NOT clear the token - it may be a stale socket issue
-        // Just log and show setup so user can retry
-        console.warn('HAven: auth_invalid received');
-        setConnStatus('disconnected');
-        showSetup();
+        handleAuthFailure('WebSocket auth', 'Home Assistant returned auth_invalid from ' + haUrl + '/api/websocket' + '\n' + formatErrorForOverlay(msg));
         break;
 
       case 'result':
+        var meta = takeWsRequestMeta(msg.id);
         // Route WS result to whichever widget registered the callback for this message ID
         if (pendingRequests[msg.id]) {
           var cb = pendingRequests[msg.id];
           delete pendingRequests[msg.id];
+          if (!msg.success) reportHavenError('WEBSOCKET RESULT ERROR', formatWsResultError(msg, meta));
           cb(msg.success ? msg.result : null);
           break;
         }
-        if (msg.success && msg.result && Array.isArray(msg.result)) {
+        if (!msg.success) {
+          if (meta && meta.optional && isWsUnauthorized(msg.error)) {
+            if (meta.label === 'subscribe haven_command') wsCommandSubId = null;
+            break;
+          }
+          reportHavenError('WEBSOCKET RESULT ERROR', formatWsResultError(msg, meta));
+          break;
+        }
+        if (msg.success && msg.result && isArray(msg.result)) {
           // This is the get_states response
           for (var i = 0; i < msg.result.length; i++) {
             var state = msg.result[i];
             entityStates[state.entity_id] = state;
-            // Fire callbacks for any widget watching this entity
-            if (entityCallbacks[state.entity_id]) {
-              var cbs = entityCallbacks[state.entity_id];
-              for (var c = 0; c < cbs.length; c++) {
-                cbs[c](state);
-              }
-            }
+            notifyEntityCallbacks(state.entity_id, state);
           }
         }
         break;
@@ -6642,20 +7150,7 @@
 
           // Update cache
           entityStates[entId] = newState;
-
-          // Fire page 0 callbacks (persistent - always active)
-          if (page0Callbacks[entId] && newState) {
-            var p0cbs = page0Callbacks[entId];
-            for (var p0 = 0; p0 < p0cbs.length; p0++) p0cbs[p0](newState);
-          }
-
-          // Fire callbacks for the current page
-          if (entityCallbacks[entId] && newState) {
-            var callbacks = entityCallbacks[entId];
-            for (var j = 0; j < callbacks.length; j++) {
-              callbacks[j](newState);
-            }
-          }
+          notifyEntityCallbacks(entId, newState);
         }
         if (msg.event && msg.event.event_type === 'haven_command') {
           handleHavenCommand(msg.event.data);
@@ -6665,13 +7160,16 @@
   }
 
   function fetchAllStates() {
-    wsSend({ id: msgId++, type: 'get_states' });
+    var id = msgId++;
+    trackWsRequest(id, 'get_states', false);
+    wsSend({ id: id, type: 'get_states' });
   }
 
   function subscribeStateChanged() {
     if (wsSubscriptionId) return;
     var id = msgId++;
     wsSubscriptionId = id;
+    trackWsRequest(id, 'subscribe state_changed', false);
     wsSend({ id: id, type: 'subscribe_events', event_type: 'state_changed' });
   }
 
@@ -6679,6 +7177,7 @@
     if (wsCommandSubId) return;
     var id = msgId++;
     wsCommandSubId = id;
+    trackWsRequest(id, 'subscribe haven_command', true);
     wsSend({ id: id, type: 'subscribe_events', event_type: 'haven_command' });
   }
 
@@ -6808,6 +7307,7 @@
   }
 
   function scheduleReconnect() {
+    if (authErrorReported) return;
     if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
     wsSubscriptionId = null;
     wsCommandSubId   = null;
@@ -6824,6 +7324,50 @@
   }
 
   // ---- Utility ---------------------------------------------
+  function isArray(value) {
+    return Object.prototype.toString.call(value) === '[object Array]';
+  }
+
+  function cleanString(value) {
+    return (value !== null && value !== undefined) ? String(value).replace(/^\s+|\s+$/g, '') : '';
+  }
+
+  function normalizeHaUrl(value) {
+    return cleanString(value).replace(/\/+$/, '');
+  }
+
+  function getCurrentOrigin() {
+    var loc = window.location;
+    if (loc && loc.protocol && loc.host) return loc.protocol + '//' + loc.host;
+    if (loc && loc.protocol && loc.hostname) {
+      return loc.protocol + '//' + loc.hostname + (loc.port ? ':' + loc.port : '');
+    }
+    return (loc && loc.origin) ? loc.origin : '';
+  }
+
+  function isSameOriginHaUrl() {
+    return !!haUrl && normalizeHaUrl(haUrl) === normalizeHaUrl(getCurrentOrigin());
+  }
+
+  function getRestUrlMode() {
+    return isSameOriginHaUrl() ? 'same-origin relative' : 'absolute';
+  }
+
+  function getHaApiUrl(path) {
+    var apiPath = cleanString(path || '');
+    if (!apiPath) apiPath = '/';
+    if (apiPath.charAt(0) !== '/') apiPath = '/' + apiPath;
+    return isSameOriginHaUrl() ? apiPath : haUrl + apiPath;
+  }
+
+  function normalizeDeviceParam(value, fallback) {
+    var device = cleanString(value);
+    if (!device) return fallback || '';
+    device = device.replace(/^devices\//i, '');
+    device = device.replace(/\.json$/i, '');
+    return device || (fallback || '');
+  }
+
   function setUrlParam(name, value) {
     var search = window.location.search.substring(1);
     var parts  = search ? search.split('&') : [];
@@ -6843,21 +7387,24 @@
     var search = window.location.search.substring(1);
     var parts  = search.split('&');
     for (var i = 0; i < parts.length; i++) {
-      var pair = parts[i].split('=');
-      if (decodeURIComponent(pair[0]) === name) {
-        return pair[1] ? decodeURIComponent(pair[1]) : '';
+      var eq = parts[i].indexOf('=');
+      var rawName = eq === -1 ? parts[i] : parts[i].slice(0, eq);
+      var rawValue = eq === -1 ? '' : parts[i].slice(eq + 1);
+      if (decodeURIComponent(rawName) === name) {
+        return rawValue ? decodeURIComponent(rawValue) : '';
       }
     }
     return null;
   }
 
   function showFatalError(msg) {
+    reportHavenError('FATAL ERROR', msg);
     var canvas = document.getElementById('canvas');
     canvas.innerHTML = '';
     canvas.style.background = '#1a0a0a';
     var err = document.createElement('div');
-    err.style.cssText = 'color:#D9534F;padding:20px;font-size:14px;white-space:pre-wrap;';
-    err.textContent = '⚠ HAven Error\n\n' + msg;
+    err.style.cssText = 'color:#fff;background:#000;border:4px solid #ffea00;padding:20px;font-size:18px;line-height:1.35;white-space:pre-wrap;';
+    err.textContent = '! HAven Error\n\n' + msg;
     canvas.appendChild(err);
   }
 

@@ -69,7 +69,7 @@ Use `?device=name` to load `devices/name.json`:
 http://your-ha-ip:8123/local/haven/index.html?device=ipad-air
 ```
 
-The parameter is the filename **without** the `.json` extension. Using `?device=ipad-air.json` will fail silently because HAven appends `.json` itself, resulting in a double extension.
+The parameter is normally the filename **without** the `.json` extension. HAven also accepts `?device=ipad-air.json` and strips the extension for compatibility with copied filenames.
 
 Omit the parameter entirely to load `devices/default.json`. If that file is missing, HAven shows a help/landing page.
 
@@ -175,13 +175,14 @@ A page with `"id": 0` renders as a persistent overlay on top of all other pages.
 
 ## Credentials & Security
 
-HAven looks for HA credentials in this order:
+HAven uses credentials in this order:
 
-1. **localStorage** (per device): set via the setup screen on first run, persists across reloads.
-2. **Device config file**: `device.ha_token` (and optionally `device.ha_url`) in the device JSON.
-3. **Setup screen**: shown if no token is found anywhere.
+1. **Device config file**: `device.ha_token` (and optionally `device.ha_url`) in the device JSON. If present, this overrides anything previously saved on the device.
+2. **URL parameter**: `ha_token` or `token`, optionally paired with `ha_url`.
+3. **localStorage** (per device): set via the setup screen on first run, persists across reloads.
+4. **Setup screen**: shown if no token is found anywhere.
 
-The HA URL defaults to `window.location.origin`. No configuration needed when HAven is hosted inside HA's `www/` folder.
+The HA URL defaults to the page origin (`protocol + host`). No configuration needed when HAven is hosted inside HA's `www/` folder.
 
 ### What is and is not protected
 
@@ -292,6 +293,16 @@ Open developer tools (`F12`) then the Console tab. The failure reason will be th
 - `ERR_CONNECTION_REFUSED`: wrong IP or port
 - `401`: token invalid or expired
 - `Mixed Content`: HTTP/HTTPS mismatch (see above)
+
+### Error overlay says AUTH ERROR or HTTP 401
+
+Home Assistant is reachable, but it rejected the Long-Lived Access Token. Create a new token in your HA profile and save it through the setup screen.
+
+If the overlay says **Credential source: device config**, update or remove `device.ha_token` in the device JSON because it overrides the token saved on the Kindle. If it says **Credential source: localStorage**, save the new token on the setup screen or clear the stored credentials and reload.
+
+If the overlay says **REST AUTH WARNING**, HAven saw a `401` or `403` from a REST request and is waiting for the WebSocket login to confirm whether the token is actually bad. If the dashboard connects, the warning can be ignored; if WebSocket returns `auth_invalid`, issue a new token.
+
+If Home Assistant denies the optional `haven_command` event listener, HAven silently disables remote dashboard commands and keeps the main dashboard running. Normal state updates can still work.
 
 ### Setup screen appears on every load
 

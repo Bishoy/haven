@@ -937,7 +937,7 @@ function renderPage() {
         pushHistory();
         wl[keyX] = Math.round(handle.x());
         wl[keyY] = Math.round(handle.y());
-        updateProps(propsEl, [wl], onPropChange, onDeleteSelected, onDuplicateSelected, undefined, config.theme, openThemeModal, openEntitySearch, openAttributeSearch);
+        updateProps(propsEl, [wl], onPropChange, onDeleteSelected, onDuplicateSelected, undefined, config.theme, openThemeModal, openEntitySearch, openAttributeSearch, pickWidgetImage);
         renderPage();
       });
       return handle;
@@ -978,7 +978,7 @@ function renderPage() {
         pushHistory();
         wl.waypoints[idx].x = Math.round(handle.x());
         wl.waypoints[idx].y = Math.round(handle.y());
-        updateProps(propsEl, [wl], onPropChange, onDeleteSelected, onDuplicateSelected, undefined, config.theme, openThemeModal, openEntitySearch, openAttributeSearch);
+        updateProps(propsEl, [wl], onPropChange, onDeleteSelected, onDuplicateSelected, undefined, config.theme, openThemeModal, openEntitySearch, openAttributeSearch, pickWidgetImage);
         renderPage();
       });
       return handle;
@@ -996,7 +996,7 @@ function renderPage() {
   uiLayer.draw();
 
   renderTree(treeEl, widgets, selectedIds, hidden, locked, treeFilter, onSelectTree, onToggleHide, onToggleLock, onReorder);
-  updateProps(propsEl, getSelectedWidgets(), onPropChange, onDeleteSelected, onDuplicateSelected, onAlignSelected, config.theme, openThemeModal, openEntitySearch, openAttributeSearch);
+  updateProps(propsEl, getSelectedWidgets(), onPropChange, onDeleteSelected, onDuplicateSelected, onAlignSelected, config.theme, openThemeModal, openEntitySearch, openAttributeSearch, pickWidgetImage);
   updateHistoryButtons();
   syncPreviewTransform();
   if (previewActive) refreshPreview();
@@ -1101,13 +1101,13 @@ function wireDrag(group, w) {
           });
         }
       }
-      updateProps(propsEl, [w], onPropChange, onDeleteSelected, onDuplicateSelected, undefined, config.theme, openThemeModal, openEntitySearch, openAttributeSearch);
+      updateProps(propsEl, [w], onPropChange, onDeleteSelected, onDuplicateSelected, undefined, config.theme, openThemeModal, openEntitySearch, openAttributeSearch, pickWidgetImage);
       renderPage();
       return;
     }
     w.x = Math.round(group.x());
     w.y = Math.round(group.y());
-    updateProps(propsEl, [w], onPropChange, onDeleteSelected, onDuplicateSelected, undefined, config.theme, openThemeModal, openEntitySearch, openAttributeSearch);
+    updateProps(propsEl, [w], onPropChange, onDeleteSelected, onDuplicateSelected, undefined, config.theme, openThemeModal, openEntitySearch, openAttributeSearch, pickWidgetImage);
   });
 }
 
@@ -1178,7 +1178,7 @@ function wireSelect(group, w) {
     w.y = Math.round(group.y());
     w.w = Math.round(newW);
     w.h = Math.round(newH);
-    updateProps(propsEl, [w], onPropChange, onDeleteSelected, onDuplicateSelected, undefined, config.theme, openThemeModal, openEntitySearch, openAttributeSearch);
+    updateProps(propsEl, [w], onPropChange, onDeleteSelected, onDuplicateSelected, undefined, config.theme, openThemeModal, openEntitySearch, openAttributeSearch, pickWidgetImage);
     renderPage();
   });
 }

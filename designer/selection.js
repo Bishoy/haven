@@ -1,6 +1,4 @@
-import { pickWidgetImage } from './app.js';
-
-export function updateProps(container, selection, onChange, onDelete, onDuplicate, onAlign, theme, onEditTheme, onEntitySearch, onAttributeSearch) {
+export function updateProps(container, selection, onChange, onDelete, onDuplicate, onAlign, theme, onEditTheme, onEntitySearch, onAttributeSearch, onPickWidgetImage) {
   _onEntitySearch    = onEntitySearch    || null;
   _onAttributeSearch = onAttributeSearch || null;
   container.innerHTML = '';
@@ -260,8 +258,10 @@ export function updateProps(container, selection, onChange, onDelete, onDuplicat
       var uploadBtn = document.createElement('button');
       uploadBtn.textContent = 'Upload\u2026';
       uploadBtn.style.cssText = 'background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:4px;cursor:pointer;white-space:nowrap;font-size:12px;flex-shrink:0;';
+      uploadBtn.disabled = !onPickWidgetImage;
       uploadBtn.addEventListener('click', function () {
-        pickWidgetImage(w, inp, thumb, onChange);
+        if (!onPickWidgetImage) return;
+        onPickWidgetImage(w, inp, thumb, onChange);
       });
 
       var clearBtn = document.createElement('button');

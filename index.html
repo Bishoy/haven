@@ -8,7 +8,7 @@
   <title>HAven</title>
 
   <!-- Version stamp - bump this to bust browser cache on all devices -->
-  <script>var HAVEN_VERSION = '1.0.7-beta';</script>
+  <script>var HAVEN_VERSION = '1.0.21-beta';</script>
 
   <!-- Assets loaded with version query string for cache busting -->
   <script>
@@ -59,8 +59,164 @@
     (function() {
       var m = /[?&]device=([^&]+)/.exec(window.location.search);
       var device = m ? decodeURIComponent(m[1]) : 'default';
+      device = device.replace(/^devices\//i, '').replace(/\.json$/i, '');
       var el = document.getElementById('setup-device-name');
       if (el) el.textContent = ' \u00b7 devices/' + device + '.json';
+    })();
+  </script>
+  <script>
+    (function() {
+      if (window.HAVEN_ERROR_OVERLAY_READY) return;
+      window.HAVEN_ERROR_OVERLAY_READY = true;
+
+      var entries = [];
+      var maxEntries = 80;
+      var originalError = window.console && window.console.error;
+      var originalWarn  = window.console && window.console.warn;
+
+      function pad(n) {
+        return n < 10 ? '0' + n : String(n);
+      }
+
+      function nowLabel() {
+        var d = new Date();
+        return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+      }
+
+      function stringify(value) {
+        if (value === null) return 'null';
+        if (value === undefined) return 'undefined';
+        if (value && value.stack) return String(value.stack);
+        if (typeof value === 'string') return value;
+        if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+        try { return JSON.stringify(value); } catch (e) {}
+        try { return String(value); } catch (err) {}
+        return '[unprintable value]';
+      }
+
+      function formatArgs(args) {
+        var out = [];
+        for (var i = 0; i < args.length; i++) out.push(stringify(args[i]));
+        return out.join(' ');
+      }
+
+      function callConsole(fn, args) {
+        if (!fn) return;
+        try {
+          fn.apply(window.console, args);
+        } catch (e) {
+          try { fn(formatArgs(args)); } catch (err) {}
+        }
+      }
+
+      function ensureOverlay() {
+        var overlay = document.getElementById('haven-error-overlay');
+        if (overlay) return overlay;
+
+        overlay = document.createElement('div');
+        overlay.id = 'haven-error-overlay';
+        overlay.setAttribute('role', 'alert');
+        overlay.innerHTML = [
+          '<div class="haven-error-overlay-header">',
+          '  <div class="haven-error-overlay-title">! HAven Errors <span id="haven-error-overlay-count">0</span></div>',
+          '  <div class="haven-error-overlay-actions">',
+          '    <button type="button" id="haven-error-overlay-clear">Clear</button>',
+          '    <button type="button" id="haven-error-overlay-hide">Hide</button>',
+          '  </div>',
+          '</div>',
+          '<div id="haven-error-overlay-list" class="haven-error-overlay-list"></div>'
+        ].join('');
+
+        document.body.appendChild(overlay);
+
+        document.getElementById('haven-error-overlay-clear').onclick = function() {
+          entries = [];
+          render();
+          overlay.className = 'hidden';
+        };
+        document.getElementById('haven-error-overlay-hide').onclick = function() {
+          overlay.className = 'hidden';
+        };
+
+        return overlay;
+      }
+
+      function render() {
+        var overlay = ensureOverlay();
+        var count = document.getElementById('haven-error-overlay-count');
+        var list = document.getElementById('haven-error-overlay-list');
+        if (count) count.textContent = String(entries.length);
+        if (!list) return;
+
+        list.innerHTML = '';
+        for (var i = entries.length - 1; i >= 0; i--) {
+          var entry = entries[i];
+          var item = document.createElement('div');
+          item.className = 'haven-error-overlay-item';
+
+          var meta = document.createElement('div');
+          meta.className = 'haven-error-overlay-meta';
+          meta.textContent = entry.time + ' - ' + entry.type;
+          item.appendChild(meta);
+
+          var msg = document.createElement('pre');
+          msg.className = 'haven-error-overlay-message';
+          msg.textContent = entry.message;
+          item.appendChild(msg);
+
+          list.appendChild(item);
+        }
+        overlay.className = '';
+      }
+
+      function report(type, message) {
+        entries.push({
+          time: nowLabel(),
+          type: type || 'ERROR',
+          message: stringify(message)
+        });
+        if (entries.length > maxEntries) entries.splice(0, entries.length - maxEntries);
+        render();
+      }
+
+      function formatWindowError(evt) {
+        var msg = evt && evt.message ? evt.message : 'Script error';
+        if (evt && evt.filename) {
+          msg += '\n' + evt.filename + ':' + (evt.lineno || 0) + ':' + (evt.colno || 0);
+        }
+        if (evt && evt.error && evt.error.stack) {
+          msg += '\n\n' + evt.error.stack;
+        }
+        return msg;
+      }
+
+      window.HAVEN_REPORT_ERROR = report;
+
+      window.addEventListener('error', function(evt) {
+        var target = evt.target || evt.srcElement;
+        if (target && target !== window && (target.tagName || target.nodeName)) {
+          var tag = target.tagName || target.nodeName;
+          var src = target.src || target.href || '';
+          report('RESOURCE ERROR', tag + (src ? '\n' + src : ''));
+          return;
+        }
+        report('SCRIPT ERROR', formatWindowError(evt));
+      }, true);
+
+      window.addEventListener('unhandledrejection', function(evt) {
+        report('PROMISE ERROR', evt && evt.reason ? evt.reason : 'Unhandled promise rejection');
+      });
+
+      if (window.console) {
+        window.console.error = function() {
+          callConsole(originalError, arguments);
+          report('CONSOLE ERROR', formatArgs(arguments));
+        };
+        window.console.warn = function() {
+          callConsole(originalWarn, arguments);
+          report('CONSOLE WARNING', formatArgs(arguments));
+        };
+      }
     })();
   </script>
 

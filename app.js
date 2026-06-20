@@ -227,8 +227,6 @@
     config = data;
     setupCanvas();
     setupPageNav();
-    var connEl = document.getElementById('conn-status');
-    if (connEl && config.device.show_connection_indicator === false) connEl.style.display = 'none';
     setupAnimationPauseHook();
     renderPage0();   // persistent overlay - renders once, never cleared
     var startPage = config.device.default_page || 1;
@@ -244,7 +242,10 @@
     }
     renderPage(startPage);
     fetchAllStatesRest();
-    if (!isPreview) connectWebSocket();
+    if (!isPreview) {
+      if (isRestOnlyMode()) startRestFallbackPolling();
+      else connectWebSocket();
+    }
     startClock();
     startInternalTime();
     if (!isPreview) initScreensaver();
@@ -266,6 +267,7 @@
       if (document.hidden) return;
       // Device just woke up - dismiss screensaver and reconnect WS if needed
       resetScreensaverTimer();
+      if (isRestOnlyMode()) return;
       if (!ws || ws.readyState !== 1) {
         if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
         connectWebSocket();
@@ -479,6 +481,7 @@
     restStateLastSuccessAt = getIsoTimestamp();
     restStatesPollFailureCount = 0;
     restStatesPollWarningReported = false;
+    if (isRestOnlyMode() && !wsAuthenticated) setConnStatus('connected');
     restAuthWarningDetails = null;
     if (restAuthWarningTimer) {
       clearTimeout(restAuthWarningTimer);
@@ -533,6 +536,7 @@
 
   function reportRestStatesPollFailure(details) {
     restStatesPollFailureCount += 1;
+    if (isRestOnlyMode()) setConnStatus('disconnected');
 
     if (restStateFetchSucceeded && restStatesPollFailureCount < REST_POLL_WARNING_FAILURES) return;
     if (restStateFetchSucceeded && restStatesPollWarningReported) return;
@@ -6079,7 +6083,11 @@
   }
 
   function fetchWeatherForecast(w, inner, timerRef, retries) {
-    if (!ws || ws.readyState !== 1) {
+    if (!wsAuthenticated || !ws || ws.readyState !== 1) {
+      if (isRestOnlyMode() || retries <= 0) {
+        fetchWeatherForecastRest(w, inner);
+        return;
+      }
       if (retries > 0) {
         setTimeout(function() { fetchWeatherForecast(w, inner, timerRef, retries - 1); }, 2000);
       }
@@ -6091,12 +6099,11 @@
       var idx = timerRef.pendingIds.indexOf(id);
       if (idx !== -1) timerRef.pendingIds.splice(idx, 1);
       if (!result) return;
-      var response = (result.response !== undefined) ? result.response : result;
-      var entityData = response[w.entity] || {};
-      var forecast = entityData.forecast || [];
+      var forecast = extractWeatherForecast(result, w.entity);
       if (!forecast.length) return;
       updateWeatherForecast(inner, w, forecast);
     };
+    trackWsRequest(id, 'weather.get_forecasts', false);
     wsSend({
       id:           id,
       type:         'call_service',
@@ -6105,6 +6112,37 @@
       service_data: { entity_id: w.entity, type: w.forecast_type || 'daily' },
       return_response: true
     });
+  }
+
+  function extractWeatherForecast(result, entityId) {
+    if (!result) return [];
+    if (result.response && result.response[entityId] && isArray(result.response[entityId].forecast)) {
+      return result.response[entityId].forecast;
+    }
+    if (result.service_response && result.service_response[entityId] && isArray(result.service_response[entityId].forecast)) {
+      return result.service_response[entityId].forecast;
+    }
+    if (result[entityId] && isArray(result[entityId].forecast)) {
+      return result[entityId].forecast;
+    }
+    if (isArray(result.forecast)) return result.forecast;
+    return [];
+  }
+
+  function fetchWeatherForecastRest(w, inner) {
+    callServiceRest(
+      'weather',
+      'get_forecasts',
+      null,
+      { entity_id: w.entity, type: w.forecast_type || 'daily' },
+      true,
+      function(result) {
+        var forecast = extractWeatherForecast(result, w.entity);
+        if (!forecast.length) return;
+        updateWeatherForecast(inner, w, forecast);
+      },
+      'weather.get_forecasts'
+    );
   }
 
   function updateWeatherForecast(inner, w, forecast) {
@@ -7007,6 +7045,85 @@
     xhr.send();
   }
 
+  function mergeServiceData(entityId, data) {
+    var body = {};
+    if (data && typeof data === 'object') {
+      for (var k in data) {
+        if (data.hasOwnProperty(k)) body[k] = data[k];
+      }
+    }
+    if (entityId && body.entity_id === undefined) body.entity_id = entityId;
+    return body;
+  }
+
+  function updateStatesFromServiceResponse(response) {
+    var states = null;
+    if (isArray(response)) states = response;
+    else if (response && isArray(response.changed_states)) states = response.changed_states;
+    if (!states) return;
+    for (var i = 0; i < states.length; i++) {
+      var state = states[i];
+      if (!state || !state.entity_id) continue;
+      entityStates[state.entity_id] = state;
+      notifyEntityCallbacks(state.entity_id, state);
+    }
+  }
+
+  function callServiceRest(domain, service, entityId, data, returnResponse, callback, label) {
+    if (!haUrl || !haToken || authErrorReported) return false;
+
+    var url = getHaApiUrl('/api/services/' + domain + '/' + service + (returnResponse ? '?return_response' : ''));
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + haToken);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState !== 4) return;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        var response = null;
+        if (xhr.responseText) {
+          try { response = JSON.parse(xhr.responseText); } catch (e) {
+            reportHavenError('REST SERVICE JSON ERROR', (label || domain + '.' + service) + '\n' + e.message);
+            return;
+          }
+        }
+        markRestStateFetchSucceeded();
+        updateStatesFromServiceResponse(response);
+        if (callback) callback(response);
+        return;
+      }
+      if (isAuthStatus(xhr.status)) {
+        handleRestAuthWarning('REST service call', formatXhrFailure(xhr, url, label || (domain + '.' + service)));
+      } else {
+        reportHavenError('REST SERVICE ERROR', formatXhrFailure(xhr, url, label || (domain + '.' + service)));
+      }
+      if (callback) callback(null);
+    };
+    xhr.onerror = function() {
+      reportHavenError('REST SERVICE ERROR', formatXhrFailure(xhr, url, (label || domain + '.' + service) + ' hit a network error.'));
+      if (callback) callback(null);
+    };
+    xhr.send(JSON.stringify(mergeServiceData(entityId, data)));
+    return true;
+  }
+
+  function callHaService(domain, service, entityId, data, returnResponse, callback, label) {
+    if (!isRestOnlyMode() && wsAuthenticated && ws && ws.readyState === 1) {
+      var id = msgId++;
+      var payload = { id: id, type: 'call_service', domain: domain, service: service };
+      if (entityId) payload.target = { entity_id: entityId };
+      if (data) payload.service_data = data;
+      if (returnResponse) payload.return_response = true;
+      if (callback) pendingRequests[id] = callback;
+      trackWsRequest(id, label || (domain + '.' + service), !callback);
+      if (wsSend(payload)) return true;
+      if (callback) delete pendingRequests[id];
+      takeWsRequestMeta(id);
+    }
+
+    return callServiceRest(domain, service, entityId, data, returnResponse, callback, label);
+  }
+
   function startRestFallbackPolling() {
     if (restFallbackTimer || !haToken || authErrorReported) return;
     fetchAllStatesRest();
@@ -7023,7 +7140,7 @@
 
   // ---- WebSocket connection ---------------------------------
   function connectWebSocket() {
-    if (authErrorReported) return;
+    if (authErrorReported || isRestOnlyMode()) return;
     setConnStatus('connecting');
 
     var wsUrl = haUrl.replace(/^http/, 'ws') + '/api/websocket';
@@ -7266,8 +7383,7 @@
     }
 
     if (type === 'automation') {
-      wsSend({ id: msgId++, type: 'call_service', domain: 'automation', service: 'trigger',
-               target: { entity_id: action.entity_id } });
+      callHaService('automation', 'trigger', action.entity_id, null, false, null, 'automation.trigger');
       return;
     }
 
@@ -7287,7 +7403,7 @@
           if (dynamicValue !== undefined) map['$value'] = dynamicValue;
           payload.service_data = injectActionTokens(action.data, map);
         }
-        wsSend(payload);
+        callHaService(payload.domain, payload.service, action.entity_id, payload.service_data, false, null, svc);
       }
       return;
     }
@@ -7348,7 +7464,7 @@
   }
 
   function scheduleReconnect() {
-    if (authErrorReported) return;
+    if (authErrorReported || isRestOnlyMode()) return;
     if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
     wsSubscriptionId = null;
     wsCommandSubId   = null;
@@ -7357,10 +7473,8 @@
     }, 5000);
   }
 
-  // ---- Connection status indicator -------------------------
+  // ---- Connection status entity ----------------------------
   function setConnStatus(status) {
-    var el = document.getElementById('conn-status');
-    el.className = 'conn-' + status;
     updateInternalEntity(INTERNAL_CONN_ENTITY, status);
   }
 
@@ -7392,6 +7506,16 @@
 
   function getRestUrlMode() {
     return isSameOriginHaUrl() ? 'same-origin relative' : 'absolute';
+  }
+
+  function getConnectionMode() {
+    var mode = config && config.device && config.device.connection_mode;
+    return cleanString(mode || '').toLowerCase();
+  }
+
+  function isRestOnlyMode() {
+    return getConnectionMode() === 'rest' ||
+      !!(config && config.device && config.device.disable_websocket === true);
   }
 
   function getHaApiUrl(path) {

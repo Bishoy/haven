@@ -8,6 +8,7 @@
     },
     "default_page": 1,
     "return_to_default": 0,
+    "connection_mode": "rest",
     "page_nav": {
       "show": false
     }

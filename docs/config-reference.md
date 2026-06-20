@@ -50,6 +50,7 @@ HAven device configs are JSON files stored in the `devices/` folder. Each file d
   "canvas": { "width": 1024, "height": 768 },
   "default_page": 1,
   "return_to_default": 60,
+  "connection_mode": "websocket",
   "screensaver": {
     "timeout": 300,
     "opacity": 0.95,
@@ -72,6 +73,7 @@ HAven device configs are JSON files stored in the `devices/` folder. Each file d
 | `canvas.height` | Design height in pixels. |
 | `default_page` | Page ID to load on startup and return to after inactivity. |
 | `return_to_default` | Seconds of inactivity before returning to `default_page`. Set to `0` or omit to disable. |
+| `connection_mode` | Optional connection strategy. Omit or set `"websocket"` for live WebSocket updates. Set `"rest"` for older browsers that cannot keep the Home Assistant WebSocket open; HAven will poll REST state and call supported services over REST instead. |
 | `screensaver` | Optional screensaver config (see below). Omit to disable. |
 | `page_nav` | Optional navigation dot styling (see below). |
 | `page_navigation` | Alias for `page_nav`. Same fields. |

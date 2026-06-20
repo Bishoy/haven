@@ -2,6 +2,8 @@
 
 The weather_forecast widget displays a multi-slot forecast strip from a Home Assistant weather entity. Each slot shows a condition icon and day/time label. An optional chart area can display one or more data series (temperature lines, precipitation bars, etc.) with a configurable legend. An optional extra row shows per-slot metric values below the chart.
 
+Forecast data is fetched with Home Assistant's `weather.get_forecasts` service. On devices using `connection_mode: "rest"`, or when the WebSocket is unavailable, the widget uses the REST `?return_response` service endpoint instead.
+
 ---
 
 ## Contents

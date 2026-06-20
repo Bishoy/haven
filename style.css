@@ -356,24 +356,6 @@ html, body {
   white-space: nowrap;
 }
 
-/* ---- Connection status dot --------------------------------- */
-
-#conn-status {
-  position: fixed;
-  bottom: 8px;
-  right: 8px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  z-index: 9999;
-  -webkit-transition: background-color 0.5s ease;
-  transition: background-color 0.5s ease;
-}
-
-.conn-connected    { background: #44C647; }
-.conn-connecting   { background: #F0AD4E; }
-.conn-disconnected { background: #D9534F; }
-
 /* ---- Page navigation dots ---------------------------------- */
 
 #page-nav {
@@ -1052,24 +1034,6 @@ html, body {
   font-weight: 500;
   white-space: nowrap;
 }
-
-/* ---- Connection status dot --------------------------------- */
-
-#conn-status {
-  position: fixed;
-  bottom: 8px;
-  right: 8px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  z-index: 9999;
-  -webkit-transition: background-color 0.5s ease;
-  transition: background-color 0.5s ease;
-}
-
-.conn-connected    { background: #44C647; }
-.conn-connecting   { background: #F0AD4E; }
-.conn-disconnected { background: #D9534F; }
 
 /* ---- Page navigation dots ---------------------------------- */
 

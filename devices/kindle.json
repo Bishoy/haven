@@ -1,0 +1,248 @@
+{
+  "version": "1.0",
+  "device": {
+    "name": "Kindle",
+    "canvas": {
+      "width": 800,
+      "height": 600
+    },
+    "default_page": 1,
+    "return_to_default": 0,
+    "page_nav": {
+      "show": false
+    }
+  },
+  "theme": {
+    "style": "kindle",
+    "colors": {
+      "background": "#FFFFFF",
+      "surface": "#FFFFFF",
+      "surface2": "#000000",
+      "primary": "#000000",
+      "warning": "#000000",
+      "danger": "#000000",
+      "text": "#000000",
+      "text_dim": "#222222",
+      "text_muted": "#555555",
+      "icon_inactive": "#777777"
+    },
+    "font_size": 18
+  },
+  "pages": [
+    {
+      "id": 1,
+      "label": "Home",
+      "widgets": [
+        {
+          "id": "main_clock",
+          "type": "label",
+          "x": 36,
+          "y": 28,
+          "w": 370,
+          "h": 145,
+          "entity": "internal.currentdtm",
+          "format": "time_12",
+          "font_size": 92,
+          "font_weight": "700",
+          "align": "center",
+          "color": "text",
+          "background": "background"
+        },
+        {
+          "id": "date",
+          "type": "label",
+          "x": 44,
+          "y": 178,
+          "w": 348,
+          "h": 42,
+          "entity": "internal.currentdtm",
+          "format": "date_short",
+          "font_size": 28,
+          "align": "center",
+          "color": "text_dim",
+          "background": "background"
+        },
+        {
+          "id": "middle_rule",
+          "type": "rectangle",
+          "x": 430,
+          "y": 40,
+          "w": 2,
+          "h": 520,
+          "background": "text",
+          "radius": 0
+        },
+        {
+          "id": "forecast_heading",
+          "type": "label",
+          "x": 470,
+          "y": 44,
+          "w": 290,
+          "h": 34,
+          "text": "NEXT 3 HOURS",
+          "font_size": 22,
+          "font_weight": "700",
+          "align": "center",
+          "color": "text",
+          "background": "background"
+        },
+        {
+          "id": "hourly_forecast",
+          "type": "weather_forecast",
+          "x": 470,
+          "y": 98,
+          "w": 290,
+          "h": 360,
+          "entity": "weather.forecast_home",
+          "forecast_type": "hourly",
+          "slots": 3,
+          "label_format": "time",
+          "background": "surface",
+          "radius": 0,
+          "show_chart": false,
+          "extra_row": [
+            "temperature",
+            "precipitation",
+            "wind_speed"
+          ],
+          "extra_row_icons": false,
+          "label_color": "text",
+          "icon_color": "text",
+          "divider_color": "text",
+          "extra_row_color": "text",
+          "forecast_scale": 1.6,
+          "condition_image_scale": 0.82,
+          "condition_images": {
+            "sunny": "images/weather/clear-day.png",
+            "clear-night": "images/weather/clear-night.png",
+            "cloudy": "images/weather/cloudy.png",
+            "partlycloudy": "images/weather/partly-cloudy-day.png",
+            "fog": "images/weather/fog.png",
+            "hail": "images/weather/hail.png",
+            "lightning": "images/weather/thunderstorms.png",
+            "lightning-rainy": "images/weather/thunderstorms-rain.png",
+            "pouring": "images/weather/rain.png",
+            "rainy": "images/weather/rain.png",
+            "snowy": "images/weather/snow.png",
+            "snowy-rainy": "images/weather/sleet.png",
+            "windy": "images/weather/wind.png",
+            "windy-variant": "images/weather/wind.png",
+            "exceptional": "images/weather/weather-alert.png",
+            "default": "images/weather/cloudy.png"
+          },
+          "refresh_interval": 1800
+        },
+        {
+          "id": "bottom_rule",
+          "type": "rectangle",
+          "x": 470,
+          "y": 490,
+          "w": 290,
+          "h": 2,
+          "background": "text",
+          "radius": 0
+        },
+        {
+          "id": "light_heading",
+          "type": "label",
+          "x": 44,
+          "y": 276,
+          "w": 348,
+          "h": 34,
+          "text": "LIGHT",
+          "font_size": 24,
+          "font_weight": "700",
+          "align": "center",
+          "color": "text",
+          "background": "background"
+        },
+        {
+          "id": "study_room_main_light",
+          "type": "switch",
+          "x": 54,
+          "y": 328,
+          "w": 328,
+          "h": 82,
+          "entity": "switch.study_room_main_light",
+          "on_value": "on",
+          "off_value": "off",
+          "label": "OFF",
+          "label_size": 30,
+          "label_color": "text",
+          "color": "surface",
+          "thumb_color": "text",
+          "padding": 8,
+          "radius": 0,
+          "thumb_radius": 0,
+          "overrides": [
+            {
+              "when": {
+                "logic": "all",
+                "conditions": [
+                  {
+                    "type": "equals",
+                    "value": "on"
+                  }
+                ]
+              },
+              "set": {
+                "label": "ON",
+                "label_color": "background",
+                "color": "text",
+                "thumb_color": "background"
+              }
+            }
+          ]
+        },
+        {
+          "id": "connection_status_text",
+          "type": "label",
+          "x": 44,
+          "y": 540,
+          "w": 348,
+          "h": 24,
+          "entity": "internal.connectionstatus",
+          "text": "DISCONNECTED",
+          "font_size": 16,
+          "align": "center",
+          "color": "text_muted",
+          "background": "background",
+          "overrides": [
+            {
+              "when": {
+                "logic": "all",
+                "conditions": [
+                  {
+                    "source": "state",
+                    "type": "equals",
+                    "value": "connected"
+                  }
+                ]
+              },
+              "set": {
+                "text": "CONNECTED",
+                "color": "text"
+              }
+            },
+            {
+              "when": {
+                "logic": "all",
+                "conditions": [
+                  {
+                    "source": "state",
+                    "type": "equals",
+                    "value": "connecting"
+                  }
+                ]
+              },
+              "set": {
+                "text": "CONNECTING",
+                "color": "text"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

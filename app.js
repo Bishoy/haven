@@ -5988,6 +5988,32 @@
     return WEATHER_CONDITION_ICONS[cond] || ('mdi:weather-' + (cond || 'cloudy'));
   }
 
+  function getWeatherConditionImage(w, cond) {
+    var images = w.condition_images || null;
+    if (!images) return '';
+    var key = cond || '';
+    return images[key] || images.default || '';
+  }
+
+  function renderWeatherConditionImage(parent, url, condition, sizePx) {
+    parent.innerHTML = '';
+    parent.style.display = 'flex';
+    parent.style.alignItems = 'center';
+    parent.style.justifyContent = 'center';
+    parent.style.lineHeight = 'normal';
+
+    var img = document.createElement('img');
+    img.className = 'weather-condition-image';
+    img.src = url;
+    img.alt = condition || 'weather';
+    img.style.width = sizePx + 'px';
+    img.style.height = sizePx + 'px';
+    img.style.maxWidth = '90%';
+    img.style.maxHeight = '90%';
+    img.style.display = 'block';
+    parent.appendChild(img);
+  }
+
   function formatWeatherLabel(dt, fmt) {
     var d = new Date(dt);
     if (isNaN(d.getTime())) return '';
@@ -6092,6 +6118,7 @@
     var showIcons  = (w.show_icons  !== false);
     var showChart  = (w.show_chart  !== false);
     var series     = w.series || [];
+    var showExtraIcons = (w.extra_row_icons !== false);
 
     var scaleRaw = (w.forecast_scale !== undefined) ? w.forecast_scale : 1;
     var scale = parseFloat(scaleRaw);
@@ -6135,7 +6162,15 @@
         iconDiv.style.cssText = 'position:absolute;top:' + iconTop + 'px;left:' + (i * slotW) + 'px;' +
           'width:' + slotW + 'px;height:' + ICON_H + 'px;line-height:' + ICON_H + 'px;' +
           'text-align:center;font-size:' + Math.round(ICON_H * 0.55) + 'px;color:' + iconColor + ';';
-        setContent(iconDiv, '[' + getWeatherConditionIcon(forecast[i].condition || '') + ']');
+        var condition = forecast[i].condition || '';
+        var conditionImage = getWeatherConditionImage(w, condition);
+        if (conditionImage) {
+          var imgScale = w.condition_image_scale !== undefined ? parseFloat(w.condition_image_scale) : 0.72;
+          if (isNaN(imgScale) || imgScale <= 0) imgScale = 0.72;
+          renderWeatherConditionImage(iconDiv, conditionImage, condition, Math.round(ICON_H * imgScale));
+        } else {
+          setContent(iconDiv, '[' + getWeatherConditionIcon(condition) + ']');
+        }
         inner.appendChild(iconDiv);
       }
     }
@@ -6382,13 +6417,19 @@
           var rawVal = forecast[i][metric];
           var valStr = '--';
           if (metric === 'condition') {
-            setContent(cell, '[' + getWeatherConditionIcon(forecast[i].condition || '') + ']');
+            var condition = forecast[i].condition || '';
+            var conditionImage = getWeatherConditionImage(w, condition);
+            if (conditionImage) {
+              renderWeatherConditionImage(cell, conditionImage, condition, Math.round(itemH * 0.9));
+            } else {
+              setContent(cell, '[' + getWeatherConditionIcon(condition) + ']');
+            }
             inner.appendChild(cell);
             continue;
           }
           var n = parseWeatherNumber(rawVal);
           if (n !== null) valStr = formatWeatherMetric(n, metric);
-          var content = icon ? ('[' + icon + ']&nbsp;' + valStr) : valStr;
+          var content = (showExtraIcons && icon) ? ('[' + icon + ']&nbsp;' + valStr) : valStr;
           setContent(cell, content);
           inner.appendChild(cell);
         }

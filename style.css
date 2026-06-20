@@ -1609,6 +1609,10 @@ html, body {
   display: inline;
 }
 
+.widget-weather-forecast .weather-condition-image {
+  border: 0;
+}
+
 /* ---- High contrast error overlay --------------------------- */
 
 #haven-error-overlay {

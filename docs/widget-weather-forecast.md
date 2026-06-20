@@ -28,7 +28,7 @@ The weather_forecast widget displays a multi-slot forecast strip from a Home Ass
   "id": "forecast",
   "type": "weather_forecast",
   "x": 10, "y": 10, "w": 1004, "h": 200,
-  "entity": "weather.home"
+  "entity": "weather.forecast_home"
 }
 ```
 
@@ -52,9 +52,12 @@ With no further config this renders 6 daily slots, each showing a condition icon
 | `label_format` | `day` | Format for slot header labels (see [Label Format](#label-format)) |
 | `label_color` | `text_muted` | Color for slot header labels |
 | `icon_color` | `text` | Color for condition icons |
+| `condition_images` | none | Optional map of HA condition strings to bitmap image paths. When a condition has a matching image, that image is used instead of the MDI icon. Add a `default` key for unknown conditions. |
+| `condition_image_scale` | `0.72` | Image size multiplier relative to the icon row height. |
 | `dividers` | `true` | Show vertical dividers between slots |
 | `divider_color` | `surface2` | Divider color |
 | `extra_row` | `[]` | Array of metric keys to display below the chart (see [Extra Row](#extra-row)) |
+| `extra_row_icons` | `true` | Set to `false` to hide the small MDI prefixes in extra metric rows. The `condition` extra row still renders the condition icon/image. |
 | `extra_row_color` | `text_muted` | Color for extra row values |
 | `series` | `[]` | Array of chart series (see [Chart and Series](#chart-and-series)) |
 | `refresh_interval` | `1800` | How often to re-fetch forecast data in seconds |
@@ -97,7 +100,22 @@ For hourly forecasts set `forecast_type: "hourly"` and `label_format: "time"`.
 
 ## Icons
 
-Condition icons use MDI weather icons mapped from HA condition strings (`sunny`, `rainy`, `cloudy`, etc.). Unknown conditions fall back to `mdi:weather-<condition>`. The `icon_color` property controls all condition icons.
+Condition icons use MDI weather icons mapped from HA condition strings (`sunny`, `rainy`, `cloudy`, etc.). Unknown conditions fall back to `mdi:weather-<condition>`. The `icon_color` property controls all MDI condition icons.
+
+For browsers that struggle with icon fonts or SVG, provide bitmap image paths with `condition_images`:
+
+```json
+"condition_images": {
+  "sunny": "images/weather/clear-day.png",
+  "clear-night": "images/weather/clear-night.png",
+  "cloudy": "images/weather/cloudy.png",
+  "partlycloudy": "images/weather/partly-cloudy-day.png",
+  "rainy": "images/weather/rain.png",
+  "default": "images/weather/cloudy.png"
+}
+```
+
+Only conditions listed in the map use images. Conditions not listed continue to use MDI unless `default` is set.
 
 ---
 
@@ -241,7 +259,7 @@ Series colors are set per-series in the `series` array.
   "id": "forecast",
   "type": "weather_forecast",
   "x": 10, "y": 10, "w": 1004, "h": 400,
-  "entity": "weather.home",
+  "entity": "weather.forecast_home",
   "forecast_type": "daily",
   "slots": 6,
   "background": "surface",
@@ -265,7 +283,7 @@ Series colors are set per-series in the `series` array.
   "id": "forecast_full",
   "type": "weather_forecast",
   "x": 10, "y": 10, "w": 1004, "h": 500,
-  "entity": "weather.home",
+  "entity": "weather.forecast_home",
   "slots": 7,
   "series": [
     { "metric": "precipitation", "style": "bar",        "color": "#5B9BD5", "label": "Rain",     "max": 50 },
@@ -287,7 +305,7 @@ Series colors are set per-series in the `series` array.
   "id": "forecast_simple",
   "type": "weather_forecast",
   "x": 10, "y": 10, "w": 1004, "h": 160,
-  "entity": "weather.home",
+  "entity": "weather.forecast_home",
   "slots": 6,
   "show_chart": false,
   "extra_row": ["temperature", "templow", "precipitation"],

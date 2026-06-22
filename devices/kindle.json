@@ -41,7 +41,7 @@
         {
           "id": "main_clock",
           "type": "label",
-          "x": 36,
+          "x": 0,
           "y": 28,
           "w": 370,
           "h": 145,
@@ -56,7 +56,7 @@
         {
           "id": "date",
           "type": "label",
-          "x": 44,
+          "x": 0,
           "y": 178,
           "w": 348,
           "h": 42,
@@ -70,7 +70,7 @@
         {
           "id": "middle_rule",
           "type": "rectangle",
-          "x": 430,
+          "x": 360,
           "y": 40,
           "w": 2,
           "h": 520,
@@ -80,7 +80,7 @@
         {
           "id": "forecast_heading",
           "type": "label",
-          "x": 470,
+          "x": 440,
           "y": 44,
           "w": 290,
           "h": 34,
@@ -94,10 +94,10 @@
         {
           "id": "hourly_forecast",
           "type": "weather_forecast",
-          "x": 448,
+          "x": 378,
           "y": 98,
-          "w": 333,
-          "h": 410,
+          "w": 405,
+          "h": 420,
           "entity": "weather.forecast_home",
           "forecast_type": "hourly",
           "slots": 6,
@@ -112,8 +112,8 @@
           "icon_color": "text",
           "divider_color": "text",
           "extra_row_color": "text",
-          "forecast_scale": 1.6,
-          "condition_image_scale": 0.82,
+          "forecast_scale": 2,
+          "condition_image_scale": 0.9,
           "condition_images": {
             "sunny": "images/weather/clear-day.png",
             "clear-night": "images/weather/clear-night.png",
@@ -137,7 +137,7 @@
         {
           "id": "bottom_rule",
           "type": "rectangle",
-          "x": 470,
+          "x": 440,
           "y": 547,
           "w": 290,
           "h": 2,
@@ -147,7 +147,7 @@
         {
           "id": "light_heading",
           "type": "label",
-          "x": 44,
+          "x": 0,
           "y": 276,
           "w": 348,
           "h": 34,
@@ -161,7 +161,7 @@
         {
           "id": "study_room_main_light",
           "type": "switch",
-          "x": 54,
+          "x": 18,
           "y": 328,
           "w": 328,
           "h": 82,
@@ -173,7 +173,7 @@
           "label_color": "text",
           "color": "surface",
           "thumb_color": "text",
-          "padding": 8,
+          "padding": 6,
           "radius": 0,
           "thumb_radius": 0,
           "overrides": [

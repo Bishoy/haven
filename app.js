@@ -7514,7 +7514,35 @@
     );
   }
 
+  function filterWeatherForecastByCurrentHour(forecast) {
+    if (!isArray(forecast) || !forecast.length) return [];
+
+    var now = new Date();
+    now.setMinutes(0, 0, 0);
+    var cutoffTs = now.getTime();
+
+    var out = [];
+    for (var i = 0; i < forecast.length; i++) {
+      var item = forecast[i] || {};
+      var d = new Date(item.datetime);
+      // Keep entries with invalid/missing datetime to avoid dropping provider-specific payloads.
+      if (isNaN(d.getTime()) || d.getTime() >= cutoffTs) out.push(item);
+    }
+    return out;
+  }
+
   function updateWeatherForecast(inner, w, forecast) {
+    forecast = filterWeatherForecastByCurrentHour(forecast);
+    if (!forecast.length) {
+      inner.innerHTML = '';
+      inner.style.display = 'block';
+      inner.style.whiteSpace = 'normal';
+      inner.style.fontSize = '12px';
+      inner.style.color = resolveColor('text_muted');
+      inner.textContent = 'No forecast';
+      return;
+    }
+
     var totalW = w.w || 300;
     var totalH = w.h || 160;
     var slots = Math.min(w.slots || 6, forecast.length);

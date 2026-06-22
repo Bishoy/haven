@@ -28,42 +28,7 @@
   <!-- Hidden element to force FontAwesome to load immediately -->
   <span class="fa-preload" aria-hidden="true"></span>
 
-  <!-- Setup overlay - shown when no credentials are stored -->
-  <div id="setup-overlay" class="hidden">
-    <div id="setup-box">
-      <div id="setup-form">
-        <div id="setup-logo"><img src="images/haven_logo_192.png" alt="" style="width:56px;height:56px;display:block;margin:0 auto 10px;">HAven<span id="setup-device-name"></span></div>
-        <p>Enter your Home Assistant details to get started.</p>
-        <label>Home Assistant URL
-          <input type="text" id="setup-url" placeholder="http://homeassistant.local:8123" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-        </label>
-        <label>Long-Lived Access Token
-          <textarea id="setup-token" placeholder="Paste your token here..." rows="4"></textarea>
-        </label>
-        <button id="setup-save">Connect</button>
-        <p id="setup-error"></p>
-      </div>
-      <div id="setup-about">
-        <p style="font-size:12px;color:#6b7580;margin:0 0 14px;">HAven is free and open source. If it's running on a screen in your home, consider shouting me a coffee which keeps me and the project going.</p>
-        <a href="https://buymeacoffee.com/tommysharpnz" target="_blank" rel="noopener">
-          <img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" style="height:32px;border-radius:6px;">
-        </a>
-        <br style="margin-bottom:8px;">
-        <a href="https://github.com/TommySharpNZ/haven" target="_blank" rel="noopener">
-          <img src="https://img.shields.io/badge/GitHub-TommySharpNZ%2Fhaven-181717?style=flat&logo=github" alt="GitHub" style="height:20px;border-radius:4px;margin-top:8px;">
-        </a>
-      </div>
-    </div>
-  </div>
-  <script>
-    (function() {
-      var m = /[?&]device=([^&]+)/.exec(window.location.search);
-      var device = m ? decodeURIComponent(m[1]) : 'default';
-      device = device.replace(/^devices\//i, '').replace(/\.json$/i, '');
-      var el = document.getElementById('setup-device-name');
-      if (el) el.textContent = ' \u00b7 devices/' + device + '.json';
-    })();
-  </script>
+  <!-- Setup overlay is injected by app.js only when credentials must be collected. -->
   <script>
     (function() {
       if (window.HAVEN_ERROR_OVERLAY_READY) return;

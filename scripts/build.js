@@ -12,18 +12,19 @@ const rootDir = path.resolve(__dirname, '..');
 const distDir = path.join(rootDir, 'dist');
 
 const EXCLUDED_TOP_LEVEL = new Set([
+  'docs',
   '.github',
   '.git',
   'dist',
   'node_modules',
-  'scripts'
+  'scripts',
 ]);
 
 const EXCLUDED_FILE_NAMES = new Set([
   '.DS_Store',
   'Thumbs.db',
   'desktop.ini',
-  'yarn.lock'
+  'yarn.lock',
 ]);
 
 function removeConsoleLogPlugin() {
@@ -41,17 +42,25 @@ function removeConsoleLogPlugin() {
           return;
         }
 
-        if (!callee.object || callee.object.type !== 'Identifier' || callee.object.name !== 'console') {
+        if (
+          !callee.object ||
+          callee.object.type !== 'Identifier' ||
+          callee.object.name !== 'console'
+        ) {
           return;
         }
 
-        if (!callee.property || callee.property.type !== 'Identifier' || callee.property.name !== 'log') {
+        if (
+          !callee.property ||
+          callee.property.type !== 'Identifier' ||
+          callee.property.name !== 'log'
+        ) {
           return;
         }
 
         pathRef.remove();
-      }
-    }
+      },
+    },
   };
 }
 
@@ -68,7 +77,11 @@ async function copyRepoContents(sourceDir, targetDir) {
 
   const entries = await fs.readdir(sourceDir, { withFileTypes: true });
   for (const entry of entries) {
-    if (EXCLUDED_TOP_LEVEL.has(entry.name) || EXCLUDED_FILE_NAMES.has(entry.name)) {
+    if (
+      entry.name.charAt(0) === '.' ||
+      EXCLUDED_TOP_LEVEL.has(entry.name) ||
+      EXCLUDED_FILE_NAMES.has(entry.name)
+    ) {
       continue;
     }
 
@@ -93,13 +106,16 @@ function createBabelPlugin(extraPlugins) {
     exclude: /node_modules/,
     extensions: ['.js'],
     presets: [
-      ['@babel/preset-env', {
-        bugfixes: true,
-        corejs: 3,
-        useBuiltIns: 'usage'
-      }]
+      [
+        '@babel/preset-env',
+        {
+          bugfixes: true,
+          corejs: 3,
+          useBuiltIns: 'usage',
+        },
+      ],
     ],
-    plugins: extraPlugins || []
+    plugins: extraPlugins || [],
   });
 }
 
@@ -114,18 +130,18 @@ async function writeBundle(options) {
         compress: options.compress,
         ecma: 5,
         format: {
-          comments: false
+          comments: false,
         },
-        mangle: true
-      })
-    ]
+        mangle: true,
+      }),
+    ],
   });
 
   await bundle.write({
     file: options.output,
     format: 'iife',
     name: options.name,
-    strict: true
+    strict: true,
   });
 
   await bundle.close();
@@ -138,8 +154,8 @@ async function buildRuntimeBundle() {
     name: 'HavenRuntimeBundle',
     babelPlugins: [removeConsoleLogPlugin],
     compress: {
-      passes: 2
-    }
+      passes: 2,
+    },
   });
 }
 
@@ -150,8 +166,8 @@ async function buildDesignerBundle() {
     name: 'HavenDesignerBundle',
     babelPlugins: [],
     compress: {
-      passes: 2
-    }
+      passes: 2,
+    },
   });
 }
 
@@ -160,7 +176,7 @@ async function rewriteDesignerHtml() {
   const html = await fs.readFile(htmlPath, 'utf8');
   const rewritten = html.replace(
     /<script type="module" src="designer\/app\.js"><\/script>/,
-    '<script src="designer.js"></script>'
+    '<script src="designer.js"></script>',
   );
 
   if (rewritten === html) {

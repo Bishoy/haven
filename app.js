@@ -57,11 +57,16 @@
   var restAuthWarningTimer = null;
   var restAuthWarningDetails = null;
   var configCacheBuster = null;
-  var REST_FALLBACK_POLL_MS = 30000;
+  var REST_FALLBACK_POLL_MS = 60000;
+  var REST_INTERACTION_REFRESH_DELAY_MS = 750;
+  var REST_INTERACTION_REFRESH_MIN_MS = 5000;
   var REST_POLL_WARNING_FAILURES = 3;
   var restStatesPollFailureCount = 0;
   var restStatesPollWarningReported = false;
   var restStateLastSuccessAt = 'never';
+  var restInteractionRefreshBound = false;
+  var restInteractionRefreshTimer = null;
+  var restInteractionRefreshLastAt = 0;
 
   // ---- Init -------------------------------------------------
   function init() {
@@ -175,8 +180,49 @@
   }
 
   // ---- Setup overlay ----------------------------------------
-  function showSetup() {
+  function ensureSetupOverlay() {
     var overlay = document.getElementById('setup-overlay');
+    if (overlay) return overlay;
+
+    overlay = document.createElement('div');
+    overlay.id = 'setup-overlay';
+    overlay.className = 'hidden';
+    overlay.innerHTML = [
+      '<div id="setup-box">',
+      '  <div id="setup-form">',
+      '    <div id="setup-logo"><img src="images/haven_logo_192.png" alt="" style="width:56px;height:56px;display:block;margin:0 auto 10px;">HAven<span id="setup-device-name"></span></div>',
+      '    <p>Paste your Home Assistant Long-Lived Access Token to connect.</p>',
+      '    <input type="hidden" id="setup-url" autocomplete="off">',
+      '    <label>Long-Lived Access Token',
+      '      <textarea id="setup-token" placeholder="Paste your token here..." rows="4" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>',
+      '    </label>',
+      '    <button id="setup-save">Connect</button>',
+      '    <p id="setup-error"></p>',
+      '  </div>',
+      '  <div id="setup-about">',
+      '    <p style="font-size:12px;color:#6b7580;margin:0 0 14px;">HAven is free and open source. If it\'s running on a screen in your home, consider shouting me a coffee which keeps me and the project going.</p>',
+      '    <a href="https://buymeacoffee.com/tommysharpnz" target="_blank" rel="noopener">',
+      '      <img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" style="height:32px;border-radius:6px;">',
+      '    </a>',
+      '    <br style="margin-bottom:8px;">',
+      '    <a href="https://github.com/TommySharpNZ/haven" target="_blank" rel="noopener">',
+      '      <img src="https://img.shields.io/badge/GitHub-TommySharpNZ%2Fhaven-181717?style=flat&logo=github" alt="GitHub" style="height:20px;border-radius:4px;margin-top:8px;">',
+      '    </a>',
+      '  </div>',
+      '</div>',
+    ].join('\n');
+
+    document.body.appendChild(overlay);
+
+    var device = normalizeDeviceParam(getUrlParam('device'), 'default');
+    var deviceEl = document.getElementById('setup-device-name');
+    if (deviceEl) deviceEl.textContent = ' \u00b7 devices/' + device + '.json';
+
+    return overlay;
+  }
+
+  function showSetup() {
+    var overlay = ensureSetupOverlay();
     overlay.classList.remove('hidden');
 
     var urlInput = document.getElementById('setup-url');
@@ -184,12 +230,17 @@
     var saveBtn = document.getElementById('setup-save');
     var errorEl = document.getElementById('setup-error');
 
-    // Pre-fill URL from localStorage or current page origin as a sensible default
-    urlInput.value = haUrl || getCurrentOrigin();
+    // Keep the HA URL implicit on the setup form; HAven is usually served
+    // from Home Assistant, so the current origin is the right default.
+    if (urlInput) urlInput.value = haUrl || getCurrentOrigin();
     tokenInput.value = haToken;
 
+    if (overlay.getAttribute('data-setup-bound') === 'true') return;
+    overlay.setAttribute('data-setup-bound', 'true');
+
     saveBtn.addEventListener('click', function () {
-      var url = normalizeHaUrl(urlInput.value);
+      var url = normalizeHaUrl(urlInput ? urlInput.value : '');
+      if (!url) url = normalizeHaUrl(haUrl || getCurrentOrigin());
       var token = cleanString(tokenInput.value);
       errorEl.textContent = '';
 
@@ -264,6 +315,7 @@
     setupCanvas();
     setupPageNav();
     setupAnimationPauseHook();
+    if (!isPreview) setupRestInteractionRefresh();
     renderPage0(); // persistent overlay - renders once, never cleared
     var startPage = config.device.default_page || 1;
     var pageParam = parseInt(getUrlParam('page'), 10);
@@ -325,6 +377,35 @@
     document.addEventListener('visibilitychange', syncAnimationPause);
     document.addEventListener('visibilitychange', onPageVisible);
     syncAnimationPause();
+  }
+
+  function setupRestInteractionRefresh() {
+    if (restInteractionRefreshBound) return;
+    restInteractionRefreshBound = true;
+
+    function queueRefresh() {
+      if (!haToken || authErrorReported) return;
+      if (!isRestOnlyMode() && wsAuthenticated) return;
+      if (restInteractionRefreshTimer) return;
+
+      var now = Date.now();
+      if (
+        restInteractionRefreshLastAt &&
+        now - restInteractionRefreshLastAt < REST_INTERACTION_REFRESH_MIN_MS
+      )
+        return;
+
+      restInteractionRefreshTimer = setTimeout(function () {
+        restInteractionRefreshTimer = null;
+        if (!haToken || authErrorReported) return;
+        if (!isRestOnlyMode() && wsAuthenticated) return;
+        restInteractionRefreshLastAt = Date.now();
+        fetchAllStatesRest();
+      }, REST_INTERACTION_REFRESH_DELAY_MS);
+    }
+
+    document.addEventListener('touchstart', queueRefresh, true);
+    document.addEventListener('mousedown', queueRefresh, true);
   }
 
   function showLandingPage(base) {

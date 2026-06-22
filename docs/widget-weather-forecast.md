@@ -13,6 +13,7 @@ Forecast data is fetched with Home Assistant's `weather.get_forecasts` service. 
 - [Slots and Layout](#slots-and-layout)
 - [Label Format](#label-format)
 - [Icons](#icons)
+- [Raster Icon Mode (Device)](#raster-icon-mode-device)
 - [Chart and Series](#chart-and-series)
 - [Series Scale: min and max](#series-scale-min-and-max)
 - [Legend](#legend)
@@ -43,31 +44,31 @@ With no further config this renders 6 daily slots, each showing a condition icon
 
 ## Properties
 
-| Property                | Default      | Description                                                                                                                                                                                                                                                    |
-| ----------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `entity`                | required     | HA weather entity ID                                                                                                                                                                                                                                           |
-| `forecast_type`         | `daily`      | `daily` or `hourly`                                                                                                                                                                                                                                            |
-| `slots`                 | `6`          | Number of forecast periods to show                                                                                                                                                                                                                             |
-| `max_slots_per_line`    | `slots`      | Maximum number of slot boxes per line before wrapping to a new line                                                                                                                                                                                            |
-| `background`            | `surface`    | Widget background color (theme token or hex)                                                                                                                                                                                                                   |
-| `radius`                | `8`          | Corner radius in px                                                                                                                                                                                                                                            |
-| `show_labels`           | `true`       | Show day/time labels at the top of each slot                                                                                                                                                                                                                   |
-| `show_icons`            | `true`       | Show condition icons below labels                                                                                                                                                                                                                              |
-| `show_chart`            | `true`       | Show the chart area                                                                                                                                                                                                                                            |
-| `show_legend`           | `false`      | Show an interactive legend below the chart                                                                                                                                                                                                                     |
-| `label_format`          | `day`        | Format for slot header labels (see [Label Format](#label-format))                                                                                                                                                                                              |
-| `label_color`           | `text_muted` | Color for slot header labels                                                                                                                                                                                                                                   |
-| `icon_color`            | `text`       | Color for condition icons                                                                                                                                                                                                                                      |
-| `condition_images`      | none         | Optional map of HA condition strings to bitmap image paths. Supports flat keys (`"rainy": "..."`), time-specific keys (`"rainy_day"`, `"rainy_night"`) and object values (`"rainy": {"day":"...","night":"..."}`). Add a `default` key for unknown conditions. |
-| `condition_image_scale` | `0.72`       | Image size multiplier relative to the icon row height.                                                                                                                                                                                                         |
-| `dividers`              | `true`       | Show vertical dividers between slots                                                                                                                                                                                                                           |
-| `divider_color`         | `surface2`   | Divider color                                                                                                                                                                                                                                                  |
-| `extra_row`             | `[]`         | Array of metric keys to display below the chart (see [Extra Row](#extra-row))                                                                                                                                                                                  |
-| `extra_row_icons`       | `true`       | Set to `false` to hide the small MDI prefixes in extra metric rows. The `condition` extra row still renders the condition icon/image.                                                                                                                          |
-| `extra_row_color`       | `text_muted` | Color for extra row values                                                                                                                                                                                                                                     |
-| `series`                | `[]`         | Array of chart series (see [Chart and Series](#chart-and-series))                                                                                                                                                                                              |
-| `refresh_interval`      | `1800`       | How often to re-fetch forecast data in seconds                                                                                                                                                                                                                 |
-| `forecast_scale`        | `1`          | Scales all internal sizing (font sizes, row heights, icon sizes). Use values above `1` to make the widget larger on high-resolution screens, below `1` to compact it.                                                                                          |
+| Property                | Default      | Description                                                                                                                                                                                                                                                                                   |
+| ----------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entity`                | required     | HA weather entity ID                                                                                                                                                                                                                                                                          |
+| `forecast_type`         | `daily`      | `daily` or `hourly`                                                                                                                                                                                                                                                                           |
+| `slots`                 | `6`          | Number of forecast periods to show                                                                                                                                                                                                                                                            |
+| `max_slots_per_line`    | `slots`      | Maximum number of slot boxes per line before wrapping to a new line                                                                                                                                                                                                                           |
+| `background`            | `surface`    | Widget background color (theme token or hex)                                                                                                                                                                                                                                                  |
+| `radius`                | `8`          | Corner radius in px                                                                                                                                                                                                                                                                           |
+| `show_labels`           | `true`       | Show day/time labels at the top of each slot                                                                                                                                                                                                                                                  |
+| `show_icons`            | `true`       | Show condition icons below labels                                                                                                                                                                                                                                                             |
+| `show_chart`            | `true`       | Show the chart area                                                                                                                                                                                                                                                                           |
+| `show_legend`           | `false`      | Show an interactive legend below the chart                                                                                                                                                                                                                                                    |
+| `label_format`          | `day`        | Format for slot header labels (see [Label Format](#label-format))                                                                                                                                                                                                                             |
+| `label_color`           | `text_muted` | Color for slot header labels                                                                                                                                                                                                                                                                  |
+| `icon_color`            | `text`       | Color for condition icons                                                                                                                                                                                                                                                                     |
+| `condition_images`      | none         | Optional map of HA condition strings to bitmap image paths. Supports flat keys (`"rainy": "..."`), time-specific keys (`"rainy_day"`, `"rainy_night"`) and object values (`"rainy": {"day":"...","night":"..."}`). Fallback keys `default_day`, `default_night`, and `default` are supported. |
+| `condition_image_scale` | `0.72`       | Image size multiplier relative to the icon row height.                                                                                                                                                                                                                                        |
+| `dividers`              | `true`       | Show vertical dividers between slots                                                                                                                                                                                                                                                          |
+| `divider_color`         | `surface2`   | Divider color                                                                                                                                                                                                                                                                                 |
+| `extra_row`             | `[]`         | Array of metric keys to display below the chart (see [Extra Row](#extra-row))                                                                                                                                                                                                                 |
+| `extra_row_icons`       | `true`       | Set to `false` to hide the small MDI prefixes in extra metric rows. The `condition` extra row still renders the condition icon/image.                                                                                                                                                         |
+| `extra_row_color`       | `text_muted` | Color for extra row values                                                                                                                                                                                                                                                                    |
+| `series`                | `[]`         | Array of chart series (see [Chart and Series](#chart-and-series))                                                                                                                                                                                                                             |
+| `refresh_interval`      | `1800`       | How often to re-fetch forecast data in seconds                                                                                                                                                                                                                                                |
+| `forecast_scale`        | `1`          | Scales all internal sizing (font sizes, row heights, icon sizes). Use values above `1` to make the widget larger on high-resolution screens, below `1` to compact it.                                                                                                                         |
 
 ---
 
@@ -87,7 +88,9 @@ Inside each slot, layout stacks vertically:
 └─────────────────────────────┘
 ```
 
-The chart takes all remaining height after labels, icons, legend, and extra row are allocated. If all rows are enabled and the widget is too short, the chart shrinks first.
+Slot height is row-aware when wrapping is enabled: the widget computes the number of rows from `slots` and `max_slots_per_line`, then each row gets an equal share of the widget height.
+
+The chart takes all remaining height inside each slot after labels, icons, legend, and extra row are allocated. If all rows are enabled and a slot is too short, the chart shrinks first.
 
 ---
 
@@ -125,7 +128,39 @@ For browsers that struggle with icon fonts or SVG, provide bitmap image paths wi
 
 Only conditions listed in the map use images. Conditions not listed continue to use MDI unless `default` is set.
 
-Day/night selection is based on each forecast slot `datetime` (night = 18:00-05:59). If `_night` keys are not provided, the widget tries to infer a night filename from common day names (for example `rain.png` -> `rain-night.png`).
+Day/night selection is based on each forecast slot `datetime` (night = 18:00-05:59). You can provide:
+
+- time-specific keys: `rainy_day`, `rainy_night`
+- object values: `"rainy": {"day":"...","night":"..."}`
+- defaults: `default_day`, `default_night`, plus `default` as a final fallback
+
+If `_night` keys are not provided, the widget tries to infer a night filename from common day names (for example `rain.png` -> `rain-night.png`).
+
+---
+
+## Raster Icon Mode (Device)
+
+This is a device-level setting, not a weather widget property.
+
+If your device cannot render the MDI icon font reliably (common on older Kindle browsers), enable raster icon mode in `device` config so `[mdi:...]` tokens render from local image files instead of the font.
+
+```json
+"device": {
+  "icon_mode": "raster",
+  "icon_base_path": "images/mdi",
+  "icon_extension": "svg",
+  "icon_size": 20
+}
+```
+
+Notes:
+
+- `icon_mode`: set to `raster` to enable image-based icon rendering.
+- `icon_base_path`: folder where icon files are stored.
+- `icon_extension`: file extension used for icon files (`svg` or `png`).
+- `icon_size`: default size in pixels for rasterized token icons.
+
+This mode mainly affects token-rendered icons such as weather extra-row prefixes (`[mdi:water-percent]`, `[mdi:weather-windy]`, etc.).
 
 ---
 
@@ -245,6 +280,8 @@ Each metric in the array becomes one row. Supported metrics:
 | `condition`     | condition icon   | MDI icon |
 
 Row height auto-scales based on how many items are in the array: fewer items get more space each.
+
+Extra row text values are left-aligned by default.
 
 ---
 
@@ -387,6 +424,27 @@ Series colors are set per-series in the `series` array.
   "show_chart": false,
   "extra_row": ["temperature", "templow", "precipitation"],
   "label_format": "day_short",
+  "dividers": true
+}
+```
+
+### Wrapped slots (Kindle-style)
+
+```json
+{
+  "id": "forecast_wrapped",
+  "type": "weather_forecast",
+  "x": 448,
+  "y": 98,
+  "w": 334,
+  "h": 410,
+  "entity": "weather.forecast_home",
+  "forecast_type": "hourly",
+  "slots": 6,
+  "max_slots_per_line": 3,
+  "show_chart": false,
+  "extra_row": ["temperature", "humidity", "wind_speed"],
+  "label_format": "time",
   "dividers": true
 }
 ```

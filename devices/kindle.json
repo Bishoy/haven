@@ -9,6 +9,10 @@
     "default_page": 1,
     "return_to_default": 0,
     "connection_mode": "rest",
+    "icon_mode": "raster",
+    "icon_base_path": "images/mdi",
+    "icon_extension": "svg",
+    "icon_size": 20,
     "page_nav": {
       "show": false
     }

@@ -33,12 +33,12 @@ HAven device configs are JSON files stored in the `devices/` folder. Each file d
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `version` | Config format version. Currently `"1.0"`. |
-| `device` | Device settings: canvas size, screensaver, navigation. |
-| `theme` | Color tokens and base font size. |
-| `pages` | Array of page objects, each containing widgets. |
+| Field     | Description                                            |
+| --------- | ------------------------------------------------------ |
+| `version` | Config format version. Currently `"1.0"`.              |
+| `device`  | Device settings: canvas size, screensaver, navigation. |
+| `theme`   | Color tokens and base font size.                       |
+| `pages`   | Array of page objects, each containing widgets.        |
 
 ---
 
@@ -66,29 +66,33 @@ HAven device configs are JSON files stored in the `devices/` folder. Each file d
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `name` | Human-readable label for this device. |
-| `canvas.width` | Design width in pixels. |
-| `canvas.height` | Design height in pixels. |
-| `default_page` | Page ID to load on startup and return to after inactivity. |
-| `return_to_default` | Seconds of inactivity before returning to `default_page`. Set to `0` or omit to disable. |
-| `connection_mode` | Optional connection strategy. Omit or set `"websocket"` for live WebSocket updates. Set `"rest"` for older browsers that cannot keep the Home Assistant WebSocket open; HAven will poll REST state and call supported services over REST instead. |
-| `screensaver` | Optional screensaver config (see below). Omit to disable. |
-| `page_nav` | Optional navigation dot styling (see below). |
-| `page_navigation` | Alias for `page_nav`. Same fields. |
-| `ha_token` | Optional Long-Lived Access Token embedded in the config file (see below). |
-| `ha_url` | Optional HA URL override. Defaults to `window.location.origin` when HAven is hosted inside HA's `www/` folder. |
+| Field               | Description                                                                                                                                                                                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`              | Human-readable label for this device.                                                                                                                                                                                                             |
+| `canvas.width`      | Design width in pixels.                                                                                                                                                                                                                           |
+| `canvas.height`     | Design height in pixels.                                                                                                                                                                                                                          |
+| `default_page`      | Page ID to load on startup and return to after inactivity.                                                                                                                                                                                        |
+| `return_to_default` | Seconds of inactivity before returning to `default_page`. Set to `0` or omit to disable.                                                                                                                                                          |
+| `connection_mode`   | Optional connection strategy. Omit or set `"websocket"` for live WebSocket updates. Set `"rest"` for older browsers that cannot keep the Home Assistant WebSocket open; HAven will poll REST state and call supported services over REST instead. |
+| `screensaver`       | Optional screensaver config (see below). Omit to disable.                                                                                                                                                                                         |
+| `page_nav`          | Optional navigation dot styling (see below).                                                                                                                                                                                                      |
+| `page_navigation`   | Alias for `page_nav`. Same fields.                                                                                                                                                                                                                |
+| `icon_mode`         | Optional icon rendering mode for `[mdi:...]` tokens. Omit or set `font` for MDI webfont rendering (default). Set `raster` to load local image files instead (recommended for older browsers/devices).                                             |
+| `icon_base_path`    | Base path for raster icons when `icon_mode: "raster"` (default: `images/mdi`).                                                                                                                                                                    |
+| `icon_extension`    | Raster icon file extension when `icon_mode: "raster"` (default: `svg`, can be `png`).                                                                                                                                                             |
+| `icon_size`         | Default raster icon size in pixels for `[mdi:...]` tokens when `icon_mode: "raster"` (default: `18`).                                                                                                                                             |
+| `ha_token`          | Optional Long-Lived Access Token embedded in the config file (see below).                                                                                                                                                                         |
+| `ha_url`            | Optional HA URL override. Defaults to `window.location.origin` when HAven is hosted inside HA's `www/` folder.                                                                                                                                    |
 
 ### Screensaver
 
 When configured, HAven dims the screen after a period of inactivity. Any touch, tap, swipe, or `haven_command` event dismisses it.
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| `timeout` | (required) | Seconds of inactivity before activating. |
-| `opacity` | `0.2` | Overlay darkness: `0.0` = transparent, `1.0` = fully black. |
-| `text` | (none) | Optional text shown on the screensaver overlay. Bounces around DVD-logo style; colour cycles on each bounce. Omit for a plain dark overlay. |
+| Field     | Default    | Description                                                                                                                                 |
+| --------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeout` | (required) | Seconds of inactivity before activating.                                                                                                    |
+| `opacity` | `0.2`      | Overlay darkness: `0.0` = transparent, `1.0` = fully black.                                                                                 |
+| `text`    | (none)     | Optional text shown on the screensaver overlay. Bounces around DVD-logo style; colour cycles on each bounce. Omit for a plain dark overlay. |
 
 ```json
 "screensaver": {
@@ -100,13 +104,13 @@ When configured, HAven dims the screen after a period of inactivity. Any touch, 
 
 ### Page navigation dots
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| `show` | `true` | Show or hide the navigation dot bar. |
+| Field              | Default          | Description                                                   |
+| ------------------ | ---------------- | ------------------------------------------------------------- |
+| `show`             | `true`           | Show or hide the navigation dot bar.                          |
 | `background_color` | semi-transparent | Background pill color. Accepts theme tokens or any CSS color. |
-| `primary_color` | `text` | Color of the active/current page dot. |
-| `secondary_color` | muted grey | Color of inactive dots. |
-| `size` | `medium` | Dot size: `small`, `medium`, or `large`. |
+| `primary_color`    | `text`           | Color of the active/current page dot.                         |
+| `secondary_color`  | muted grey       | Color of inactive dots.                                       |
+| `size`             | `medium`         | Dot size: `small`, `medium`, or `large`.                      |
 
 Set `"show": false` to hide the built-in dots entirely, for example when using custom navigation buttons.
 
@@ -164,28 +168,28 @@ Color tokens are named values referenced throughout widget configs. Any widget p
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `style` | Optional visual theme name. Loads `themes/{name}.css` and applies a scoped CSS class to the canvas. See [Visual Themes](#visual-themes). |
-| `colors` | Named color tokens referenced by widgets. See standard tokens below. |
-| `font_size` | Base font size in pixels. Individual widgets can override with their own `font_size`. |
+| Field       | Description                                                                                                                              |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `style`     | Optional visual theme name. Loads `themes/{name}.css` and applies a scoped CSS class to the canvas. See [Visual Themes](#visual-themes). |
+| `colors`    | Named color tokens referenced by widgets. See standard tokens below.                                                                     |
+| `font_size` | Base font size in pixels. Individual widgets can override with their own `font_size`.                                                    |
 
 ### Standard tokens
 
 These ten tokens are used internally by HAven as widget defaults. They must be present in the `colors` block. You can change their hex values freely, but do not rename or remove them.
 
-| Token | Default | Typical use |
-|-------|---------|-------------|
-| `background` | `#161C23` | Canvas/page background |
-| `surface` | `#272E36` | Card and panel backgrounds |
-| `surface2` | `#363f4a` | Elevated surfaces, active button backgrounds |
-| `primary` | `#8ADF45` | Active states and highlights |
-| `warning` | `#F0AD4E` | Warning-level values |
-| `danger` | `#D9534F` | Error and alert values |
-| `text` | `#FFFFFF` | Primary text |
-| `text_dim` | `#e6e6e6` | Secondary text |
-| `text_muted` | `#9fa5ad` | Inactive and hint text |
-| `icon_inactive` | `#464c53` | Icons in off/inactive state |
+| Token           | Default   | Typical use                                  |
+| --------------- | --------- | -------------------------------------------- |
+| `background`    | `#161C23` | Canvas/page background                       |
+| `surface`       | `#272E36` | Card and panel backgrounds                   |
+| `surface2`      | `#363f4a` | Elevated surfaces, active button backgrounds |
+| `primary`       | `#8ADF45` | Active states and highlights                 |
+| `warning`       | `#F0AD4E` | Warning-level values                         |
+| `danger`        | `#D9534F` | Error and alert values                       |
+| `text`          | `#FFFFFF` | Primary text                                 |
+| `text_dim`      | `#e6e6e6` | Secondary text                               |
+| `text_muted`    | `#9fa5ad` | Inactive and hint text                       |
+| `icon_inactive` | `#464c53` | Icons in off/inactive state                  |
 
 ### Custom tokens
 
@@ -224,15 +228,15 @@ When HAven loads, it adds the class `theme-{name}` to the canvas element and inj
 
 ### Built-in themes
 
-| Name | Description |
-|------|-------------|
-| `fallout` | Pip-Boy terminal aesthetic. Phosphor green on near-black, CRT scanlines, vignette, monospace font, subtle screen flicker. |
-| `cyberpunk` | Cyberpunk 2077 aesthetic. Neon yellow on dark blue-black, chromatic aberration on text, diagonal corner cuts on buttons, rolling CRT band effect. |
-| `scada` | Industrial HMI aesthetic. Amber on dark charcoal, monospace font, engineering grid background, square corners, no glow or animation. Cameras rendered in grayscale with an amber border frame. |
-| `brutalist` | High-contrast light-mode aesthetic. Black on white, heavy 3px borders, bold sans-serif, zero decoration. The only light-mode theme. Active buttons invert completely (white becomes black). Cameras rendered in harsh high-contrast black and white. |
-| `glass` | Glassmorphism aesthetic. Frosted semi-transparent panels floating over a colourful radial gradient background. Requires rgba() surface colors (e.g. rgba(255,255,255,0.10)) to enable the backdrop blur. Cameras rendered with slight desaturation and a white inset rim. |
-| `vaporwave` | Retro 80s synthwave aesthetic. Deep purple sky fading through violet, pink, and coral at the horizon. Hot pink neon glow on panels, cyan neon on buttons. Italic wide sans-serif text with a bloom effect. Cameras tinted toward the purple-pink spectrum. |
-| `luxury` | High-end residential aesthetic. Near-black surfaces with antique gold (#c9a84c) accents. Thin 1px gold borders on every panel and button. Palatino serif typography with spaced uppercase headers. No animations. Cameras warmed with subtle sepia and a thin gold inset border. |
+| Name        | Description                                                                                                                                                                                                                                                                      |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fallout`   | Pip-Boy terminal aesthetic. Phosphor green on near-black, CRT scanlines, vignette, monospace font, subtle screen flicker.                                                                                                                                                        |
+| `cyberpunk` | Cyberpunk 2077 aesthetic. Neon yellow on dark blue-black, chromatic aberration on text, diagonal corner cuts on buttons, rolling CRT band effect.                                                                                                                                |
+| `scada`     | Industrial HMI aesthetic. Amber on dark charcoal, monospace font, engineering grid background, square corners, no glow or animation. Cameras rendered in grayscale with an amber border frame.                                                                                   |
+| `brutalist` | High-contrast light-mode aesthetic. Black on white, heavy 3px borders, bold sans-serif, zero decoration. The only light-mode theme. Active buttons invert completely (white becomes black). Cameras rendered in harsh high-contrast black and white.                             |
+| `glass`     | Glassmorphism aesthetic. Frosted semi-transparent panels floating over a colourful radial gradient background. Requires rgba() surface colors (e.g. rgba(255,255,255,0.10)) to enable the backdrop blur. Cameras rendered with slight desaturation and a white inset rim.        |
+| `vaporwave` | Retro 80s synthwave aesthetic. Deep purple sky fading through violet, pink, and coral at the horizon. Hot pink neon glow on panels, cyan neon on buttons. Italic wide sans-serif text with a bloom effect. Cameras tinted toward the purple-pink spectrum.                       |
+| `luxury`    | High-end residential aesthetic. Near-black surfaces with antique gold (#c9a84c) accents. Thin 1px gold borders on every panel and button. Palatino serif typography with spaced uppercase headers. No animations. Cameras warmed with subtle sepia and a thin gold inset border. |
 
 Demo configs are included in `devices/fallout-demo.json`, `devices/cyberpunk-demo.json`, `devices/scada-demo.json`, `devices/brutalist-demo.json`, `devices/glass-demo.json`, `devices/vaporwave-demo.json`, and `devices/luxury-demo.json`.
 
@@ -263,6 +267,7 @@ Demo configs are included in `devices/fallout-demo.json`, `devices/cyberpunk-dem
 Animations in theme CSS files must not apply `transform` or `background` to the `#canvas` element (the element that receives the `.theme-{name}` class). HAven sets `transform: scale()` on the canvas element inline for screen scaling, and animating those properties on the element itself will cause scaling to break.
 
 Safe approaches:
+
 - Animate `opacity` on the canvas element (subtle only, keep the dip under 5%)
 - Animate `transform`, `opacity`, or any property on `::before` or `::after` pseudo-elements
 - Animate any property on widget child elements
@@ -285,14 +290,14 @@ Users navigate between pages by swiping left/right or tapping the navigation dot
 
 ### Page properties
 
-| Property | Description |
-|----------|-------------|
-| `id` | Unique integer. Referenced by navigation actions and `default_page`. |
-| `label` | Display name shown in the navigation dot tooltip. |
-| `background_image` | Path or URL to a background image (see below). |
-| `background_image_opacity` | Image brightness: `0.0` to `1.0`. |
-| `background_image_fit` | `cover` (default, may crop) or `contain` (letterbox). |
-| `widgets` | Array of widget objects on this page. |
+| Property                   | Description                                                          |
+| -------------------------- | -------------------------------------------------------------------- |
+| `id`                       | Unique integer. Referenced by navigation actions and `default_page`. |
+| `label`                    | Display name shown in the navigation dot tooltip.                    |
+| `background_image`         | Path or URL to a background image (see below).                       |
+| `background_image_opacity` | Image brightness: `0.0` to `1.0`.                                    |
+| `background_image_fit`     | `cover` (default, may crop) or `contain` (letterbox).                |
+| `widgets`                  | Array of widget objects on this page.                                |
 
 ---
 
@@ -325,11 +330,11 @@ Pages can display a background image beneath their widgets.
 }
 ```
 
-| Property | Values | Description |
-|----------|--------|-------------|
-| `background_image` | path or URL | Relative paths resolve from the `haven/` folder. |
-| `background_image_opacity` | `0.0` to `1.0` | `1.0` = full brightness, `0.1` = very subtle. |
-| `background_image_fit` | `cover` (default), `contain` | How the image fills the canvas. |
+| Property                   | Values                       | Description                                      |
+| -------------------------- | ---------------------------- | ------------------------------------------------ |
+| `background_image`         | path or URL                  | Relative paths resolve from the `haven/` folder. |
+| `background_image_opacity` | `0.0` to `1.0`               | `1.0` = full brightness, `0.1` = very subtle.    |
+| `background_image_fit`     | `cover` (default), `contain` | How the image fills the canvas.                  |
 
 ---
 
@@ -356,6 +361,27 @@ Use `[mdi:icon-name]` syntax in any label `text` or button `icon` field:
 Icons and text can be freely mixed in a single string. The icon name matches the MDI name exactly, the same name you would use in a HA `icon:` field.
 
 Full icon library: https://pictogrammers.com/library/mdi/
+
+### Raster icon mode (global)
+
+If a device has trouble rendering the MDI font (for example older Kindle browsers), you can switch all `[mdi:...]` token icons to local image files by setting raster mode in the `device` block.
+
+```json
+"device": {
+  "icon_mode": "raster",
+  "icon_base_path": "images/mdi",
+  "icon_extension": "svg",
+  "icon_size": 20
+}
+```
+
+Mode behavior:
+
+- `icon_mode: "font"` (or omitted): current default MDI font behavior.
+- `icon_mode: "raster"`: loads icons from `icon_base_path/icon-name.icon_extension`.
+- If a raster icon file is missing, HAven falls back to the MDI font icon for that token.
+
+This is a global device setting and applies to icon tokens in all widgets, not only weather widgets.
 
 ### Spacing around icons
 
@@ -386,10 +412,10 @@ See the dedicated [Conditional Overrides](overrides.md) reference for full synta
 
 HAven provides a small set of built-in entity IDs that work exactly like HA entities in widget bindings:
 
-| Entity ID | State | Updates |
-|-----------|-------|---------|
+| Entity ID                   | State                                        | Updates                   |
+| --------------------------- | -------------------------------------------- | ------------------------- |
 | `internal.connectionstatus` | `connected`, `connecting`, or `disconnected` | On WebSocket state change |
-| `internal.currentdtm` | ISO datetime string | Once per minute |
+| `internal.currentdtm`       | ISO datetime string                          | Once per minute           |
 
 Example: clock label using the internal datetime entity:
 
@@ -399,7 +425,10 @@ Example: clock label using the internal datetime entity:
   "entity": "internal.currentdtm",
   "prefix": "[mdi:clock-outline]&nbsp;",
   "format": "time_24",
-  "x": 20, "y": 10, "w": 200, "h": 40,
+  "x": 20,
+  "y": 10,
+  "w": 200,
+  "h": 40,
   "font_size": 24,
   "color": "text"
 }
@@ -411,12 +440,27 @@ Example: connection indicator dot using overrides:
 {
   "type": "rectangle",
   "entity": "internal.connectionstatus",
-  "x": 1004, "y": 748, "w": 12, "h": 12,
+  "x": 1004,
+  "y": 748,
+  "w": 12,
+  "h": 12,
   "radius": 6,
   "background": "danger",
   "overrides": [
-    { "when": { "logic": "all", "conditions": [{ "type": "equals", "value": "connected" }] },    "set": { "background": "primary" } },
-    { "when": { "logic": "all", "conditions": [{ "type": "equals", "value": "connecting" }] },   "set": { "background": "warning" } }
+    {
+      "when": {
+        "logic": "all",
+        "conditions": [{ "type": "equals", "value": "connected" }]
+      },
+      "set": { "background": "primary" }
+    },
+    {
+      "when": {
+        "logic": "all",
+        "conditions": [{ "type": "equals", "value": "connecting" }]
+      },
+      "set": { "background": "warning" }
+    }
   ]
 }
 ```

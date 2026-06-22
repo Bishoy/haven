@@ -7333,9 +7333,8 @@
 
   function renderWeatherConditionImage(parent, url, condition, sizePx) {
     parent.innerHTML = '';
-    parent.style.display = 'flex';
-    parent.style.alignItems = 'center';
-    parent.style.justifyContent = 'center';
+    parent.style.position = 'relative';
+    parent.style.textAlign = 'center';
     parent.style.lineHeight = 'normal';
 
     var img = document.createElement('img');
@@ -7347,6 +7346,11 @@
     img.style.maxWidth = '90%';
     img.style.maxHeight = '90%';
     img.style.display = 'block';
+    img.style.position = 'absolute';
+    img.style.left = '50%';
+    img.style.top = '50%';
+    img.style.marginLeft = '-' + Math.round(sizePx / 2) + 'px';
+    img.style.marginTop = '-' + Math.round(sizePx / 2) + 'px';
     parent.appendChild(img);
   }
 
@@ -7516,6 +7520,8 @@
     var slots = Math.min(w.slots || 6, forecast.length);
     var maxSlotsPerLine = w.max_slots_per_line || slots;
     var effectiveSlotsPerLine = Math.min(slots, maxSlotsPerLine);
+    var rowCount = Math.max(1, Math.ceil(slots / effectiveSlotsPerLine));
+    var slotH = Math.max(1, Math.floor(totalH / rowCount));
     var borderWidth = 2; // 1px left border + 1px right border per slot
     var slotW = Math.floor(
       (totalW - borderWidth * effectiveSlotsPerLine) / effectiveSlotsPerLine,
@@ -7543,7 +7549,7 @@
     var EXTRA_ITEM_H =
       extraRow.length > 2 ? sc(16) : extraRow.length > 1 ? sc(18) : sc(22);
     var EXTRA_H = extraRow.length > 0 ? EXTRA_ITEM_H * extraRow.length : 0;
-    var CHART_H = Math.max(0, totalH - LABEL_H - ICON_H - LEGEND_H - EXTRA_H);
+    var CHART_H = Math.max(0, slotH - LABEL_H - ICON_H - LEGEND_H - EXTRA_H);
     if (!showChart) CHART_H = 0;
 
     var labelColor = resolveColor(w.label_color || 'text_muted');
@@ -7562,6 +7568,9 @@
       slotWrapper.style.cssText =
         'display:inline-block;vertical-align:top;width:' +
         slotW +
+        'px;' +
+        'height:' +
+        slotH +
         'px;' +
         'font-size:' +
         sc(11) +
@@ -7755,7 +7764,7 @@
             'px;line-height:' +
             itemH +
             'px;' +
-            'text-align:center;font-size:' +
+            'text-align:left;padding-left:6px;font-size:' +
             sc(extraRow.length > 2 ? 9 : extraRow.length > 1 ? 10 : 11) +
             'px;color:' +
             extraColor +
@@ -8312,10 +8321,11 @@
   }
 
   // ---- Icon rendering -------------------------------------
-  // Use [mdi:icon-name] in any text string. Emits:
+  // Use [mdi:icon-name] in any text string.
+  // Default mode emits:
   //   <span class="mdi mdi-icon-name"></span>
-  // MDI's own CSS (fonts/materialdesignicons.css) handles the rest.
-  // No mapping table - any valid MDI name just works.
+  // Optional raster mode (device.icon_mode: "raster") emits:
+  //   <img src="images/mdi/icon-name.png"> with font-icon fallback on load error.
   // Find icons at: https://pictogrammers.com/library/mdi/
 
   // Decode HTML entities in config text strings.
@@ -8327,6 +8337,57 @@
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"');
+  }
+
+  function isRasterIconMode() {
+    return !!(
+      config &&
+      config.device &&
+      String(config.device.icon_mode || '').toLowerCase() === 'raster'
+    );
+  }
+
+  function buildMdiRasterSrc(iconName) {
+    var base =
+      config && config.device && config.device.icon_base_path
+        ? String(config.device.icon_base_path)
+        : 'images/mdi/';
+    var ext =
+      config && config.device && config.device.icon_extension
+        ? String(config.device.icon_extension)
+        : 'svg';
+    if (base.charAt(base.length - 1) !== '/') base += '/';
+    return base + iconName + '.' + ext;
+  }
+
+  function createMdiNode(iconName) {
+    if (!isRasterIconMode()) {
+      var span = document.createElement('span');
+      span.className = 'mdi mdi-' + iconName;
+      return span;
+    }
+
+    var img = document.createElement('img');
+    var size =
+      config && config.device && config.device.icon_size
+        ? parseInt(config.device.icon_size, 10)
+        : 18;
+    if (!size || isNaN(size) || size < 8) size = 18;
+
+    img.src = buildMdiRasterSrc(iconName);
+    img.alt = iconName;
+    img.style.width = size + 'px';
+    img.style.height = size + 'px';
+    img.style.display = 'inline-block';
+    img.style.verticalAlign = 'text-bottom';
+
+    // Graceful fallback if PNG asset is missing.
+    img.onerror = function () {
+      var fallback = document.createElement('span');
+      fallback.className = 'mdi mdi-' + iconName;
+      if (img.parentNode) img.parentNode.replaceChild(fallback, img);
+    };
+    return img;
   }
 
   function setContent(el, str) {
@@ -8354,9 +8415,7 @@
         );
       }
       if (m[1] !== undefined) {
-        var span = document.createElement('span');
-        span.className = 'mdi mdi-' + m[1];
-        el.appendChild(span);
+        el.appendChild(createMdiNode(m[1]));
       } else {
         var small = document.createElement('span');
         small.style.fontSize = '0.6em';

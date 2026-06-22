@@ -14,14 +14,14 @@
   var wsReconnectTimer = null;
   var restFallbackTimer = null;
   var wsSubscriptionId = null;
-  var wsCommandSubId   = null;
-  var wsAuthenticated  = false;  // true only after auth_ok received
-  var havenDeviceId    = null;   // ?device= URL param, used to filter haven_command events
+  var wsCommandSubId = null;
+  var wsAuthenticated = false; // true only after auth_ok received
+  var havenDeviceId = null; // ?device= URL param, used to filter haven_command events
   var msgId = 1;
-  var entityCallbacks = {};        // entityId -> [callback, ...] for current page
-  var page0Callbacks  = {};        // entityId -> [callback, ...] persistent (page 0 widgets)
-  var pendingRequests = {};  // msgId -> callback for all async WS responses (camera, agenda, tasks, weather)
-  var wsRequestMeta = {};    // msgId -> { label, optional } for useful overlay messages
+  var entityCallbacks = {}; // entityId -> [callback, ...] for current page
+  var page0Callbacks = {}; // entityId -> [callback, ...] persistent (page 0 widgets)
+  var pendingRequests = {}; // msgId -> callback for all async WS responses (camera, agenda, tasks, weather)
+  var wsRequestMeta = {}; // msgId -> { label, optional } for useful overlay messages
   var wsLastUrl = '';
   var wsLastOpen = false;
   var wsLastMessageType = 'none';
@@ -34,18 +34,18 @@
   var wsHandshakeCloseReported = false;
   var wsHandshakeCloseTimer = null;
   var restStateFetchSucceeded = false;
-  var activePageTimers      = [];  // setInterval IDs to clear on page change
-  var entityStates = {};      // entityId -> stateObject (cached)
+  var activePageTimers = []; // setInterval IDs to clear on page change
+  var entityStates = {}; // entityId -> stateObject (cached)
   var INTERNAL_CONN_ENTITY = 'internal.connectionstatus';
   var INTERNAL_TIME_ENTITY = 'internal.currentdtm';
   var INTERNAL_PAGE_ENTITY = 'internal.currentpage';
   var returnTimer = null;
   var clockTimer = null;
   var internalTimeTimer = null;
-  var screensaverTimer    = null;
-  var screensaverActive   = false;
-  var screensaverRaf      = null;
-  var screensaverEl       = null;
+  var screensaverTimer = null;
+  var screensaverActive = false;
+  var screensaverRaf = null;
+  var screensaverEl = null;
   var screensaverListenersAdded = false;
   var pageNavTheme = null;
   var animationPauseBound = false;
@@ -76,14 +76,23 @@
     // When a token is provided in the URL, treat the current page origin as the HA URL
     // unless ha_url is explicitly provided. This avoids stale Kindle localStorage
     // pointing state requests at a different host than the dashboard page.
-    var urlToken = cleanString(getUrlParam('ha_token') || getUrlParam('token') || '');
-    var urlHaUrl = cleanString(getUrlParam('ha_url') || getUrlParam('haurl') || '');
+    var urlToken = cleanString(
+      getUrlParam('ha_token') || getUrlParam('token') || '',
+    );
+    var urlHaUrl = cleanString(
+      getUrlParam('ha_url') || getUrlParam('haurl') || '',
+    );
     var pageOrigin = getCurrentOrigin();
-    haToken = urlToken || cleanString(localStorage.getItem('haven_token') || '');
-    haUrl   = urlToken
-      ? (urlHaUrl || pageOrigin)
-      : (urlHaUrl || cleanString(localStorage.getItem('haven_url') || ''));
-    credentialSource = urlToken ? 'URL parameter' : (haToken ? 'localStorage' : 'none');
+    haToken =
+      urlToken || cleanString(localStorage.getItem('haven_token') || '');
+    haUrl = urlToken
+      ? urlHaUrl || pageOrigin
+      : urlHaUrl || cleanString(localStorage.getItem('haven_url') || '');
+    credentialSource = urlToken
+      ? 'URL parameter'
+      : haToken
+        ? 'localStorage'
+        : 'none';
 
     // If no URL in localStorage, default to the current page origin.
     // HAven is normally hosted inside HA's www/ folder, so the page origin
@@ -105,15 +114,18 @@
   // Falls back to localStorage token, then shows setup if neither is present.
   function loadConfigForCredentials() {
     var deviceParam = normalizeDeviceParam(getUrlParam('device'), 'default');
-    var base        = window.location.pathname.replace(/\/[^\/]*$/, '/');
-    var configUrl   = base + 'devices/' + deviceParam + '.json?v=' + getConfigCacheBuster();
+    var base = window.location.pathname.replace(/\/[^\/]*$/, '/');
+    var configUrl =
+      base + 'devices/' + deviceParam + '.json?v=' + getConfigCacheBuster();
 
-    fetchJson(configUrl, function(err, data) {
+    fetchJson(configUrl, function (err, data) {
       if (err) {
         console.log('HAven init: config fetch error: ' + err);
         // Fall back to localStorage credentials if the config cannot be fetched
         if (haToken) {
-          console.log('HAven init: using localStorage credentials after config fetch error');
+          console.log(
+            'HAven init: using localStorage credentials after config fetch error',
+          );
           loadConfig();
         } else {
           showSetup();
@@ -130,23 +142,30 @@
         return;
       }
 
-      var credUrl   = normalizeHaUrl((data.device && data.device.ha_url) || '');
+      var credUrl = normalizeHaUrl((data.device && data.device.ha_url) || '');
       var credToken = cleanString((data.device && data.device.ha_token) || '');
 
-      console.log('HAven init: config loaded, credUrl=' + credUrl + ' credTokenLength=' + credToken.length);
+      console.log(
+        'HAven init: config loaded, credUrl=' +
+          credUrl +
+          ' credTokenLength=' +
+          credToken.length,
+      );
 
       if (credToken) {
         // Config token takes priority - update localStorage so it stays in sync
         if (credUrl) haUrl = credUrl;
         haToken = credToken;
         credentialSource = 'device config';
-        localStorage.setItem('haven_url',   haUrl);
+        localStorage.setItem('haven_url', haUrl);
         localStorage.setItem('haven_token', haToken);
         console.log('HAven init: credentials from device config, url=' + haUrl);
         loadConfig();
       } else if (haToken) {
         // No token in config - use whatever is already in localStorage
-        console.log('HAven init: no token in config, using localStorage credentials');
+        console.log(
+          'HAven init: no token in config, using localStorage credentials',
+        );
         loadConfig();
       } else {
         console.log('HAven init: no token found anywhere, showing setup');
@@ -160,24 +179,30 @@
     var overlay = document.getElementById('setup-overlay');
     overlay.classList.remove('hidden');
 
-    var urlInput   = document.getElementById('setup-url');
+    var urlInput = document.getElementById('setup-url');
     var tokenInput = document.getElementById('setup-token');
-    var saveBtn    = document.getElementById('setup-save');
-    var errorEl    = document.getElementById('setup-error');
+    var saveBtn = document.getElementById('setup-save');
+    var errorEl = document.getElementById('setup-error');
 
     // Pre-fill URL from localStorage or current page origin as a sensible default
-    urlInput.value   = haUrl || getCurrentOrigin();
+    urlInput.value = haUrl || getCurrentOrigin();
     tokenInput.value = haToken;
 
     saveBtn.addEventListener('click', function () {
-      var url   = normalizeHaUrl(urlInput.value);
+      var url = normalizeHaUrl(urlInput.value);
       var token = cleanString(tokenInput.value);
       errorEl.textContent = '';
 
-      if (!url)   { errorEl.textContent = 'Please enter your Home Assistant URL.'; return; }
-      if (!token) { errorEl.textContent = 'Please enter your access token.'; return; }
+      if (!url) {
+        errorEl.textContent = 'Please enter your Home Assistant URL.';
+        return;
+      }
+      if (!token) {
+        errorEl.textContent = 'Please enter your access token.';
+        return;
+      }
 
-      localStorage.setItem('haven_url',   url);
+      localStorage.setItem('haven_url', url);
       localStorage.setItem('haven_token', token);
 
       // Hard reload for cleanest possible startup with new credentials
@@ -188,23 +213,29 @@
   // ---- Config loading ---------------------------------------
   function loadConfig() {
     var deviceParam = normalizeDeviceParam(getUrlParam('device'), '');
-    var base        = window.location.pathname.replace(/\/[^\/]*$/, '/');
+    var base = window.location.pathname.replace(/\/[^\/]*$/, '/');
 
     if (deviceParam) {
       // Device explicitly specified in URL - load it directly
-      loadConfigFromUrl(base + 'devices/' + deviceParam + '.json?v=' + getConfigCacheBuster(), deviceParam);
+      loadConfigFromUrl(
+        base + 'devices/' + deviceParam + '.json?v=' + getConfigCacheBuster(),
+        deviceParam,
+      );
     } else {
       // No device specified - try default.json, fall back to landing page
       console.log('HAven: no device specified, trying default.json');
-      fetchJson(base + 'devices/default.json?v=' + getConfigCacheBuster(), function(err, data) {
-        if (!err && data) {
-          console.log('HAven: default.json found, loading');
-          applyConfig(data);
-        } else {
-          console.log('HAven: no default.json found, showing landing page');
-          showLandingPage(base);
-        }
-      });
+      fetchJson(
+        base + 'devices/default.json?v=' + getConfigCacheBuster(),
+        function (err, data) {
+          if (!err && data) {
+            console.log('HAven: default.json found, loading');
+            applyConfig(data);
+          } else {
+            console.log('HAven: no default.json found, showing landing page');
+            showLandingPage(base);
+          }
+        },
+      );
     }
   }
 
@@ -213,7 +244,12 @@
     console.log('HAven loadConfig: fetching ' + configUrl);
     fetchJson(configUrl, function (err, data) {
       if (err) {
-        showFatalError('Could not load device config: devices/' + deviceParam + '.json\n' + err);
+        showFatalError(
+          'Could not load device config: devices/' +
+            deviceParam +
+            '.json\n' +
+            err,
+        );
         return;
       }
       applyConfig(data);
@@ -228,16 +264,25 @@
     setupCanvas();
     setupPageNav();
     setupAnimationPauseHook();
-    renderPage0();   // persistent overlay - renders once, never cleared
+    renderPage0(); // persistent overlay - renders once, never cleared
     var startPage = config.device.default_page || 1;
     var pageParam = parseInt(getUrlParam('page'), 10);
-    if (window.HAVEN_OVERRIDE_PAGE !== undefined && window.HAVEN_OVERRIDE_PAGE !== null) {
-      console.log('HAven preview: using override page', window.HAVEN_OVERRIDE_PAGE);
+    if (
+      window.HAVEN_OVERRIDE_PAGE !== undefined &&
+      window.HAVEN_OVERRIDE_PAGE !== null
+    ) {
+      console.log(
+        'HAven preview: using override page',
+        window.HAVEN_OVERRIDE_PAGE,
+      );
       pageParam = parseInt(window.HAVEN_OVERRIDE_PAGE, 10);
     }
     if (pageParam) {
       for (var pi = 0; pi < config.pages.length; pi++) {
-        if (config.pages[pi].id === pageParam) { startPage = pageParam; break; }
+        if (config.pages[pi].id === pageParam) {
+          startPage = pageParam;
+          break;
+        }
       }
     }
     renderPage(startPage);
@@ -269,7 +314,10 @@
       resetScreensaverTimer();
       if (isRestOnlyMode()) return;
       if (!ws || ws.readyState !== 1) {
-        if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+        if (wsReconnectTimer) {
+          clearTimeout(wsReconnectTimer);
+          wsReconnectTimer = null;
+        }
         connectWebSocket();
       }
     }
@@ -309,7 +357,7 @@
       '    <div class="landing-label">Shortcut</div>',
       '    <div class="landing-hint">Create a <code>devices/default.json</code> to load automatically when no device is specified.</div>',
       '  </div>',
-      '</div>'
+      '</div>',
     ].join('\n');
 
     document.body.appendChild(landing);
@@ -326,9 +374,14 @@
     if (value === undefined) return 'undefined';
     if (value && value.stack) return String(value.stack);
     if (typeof value === 'string') return value;
-    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-    try { return JSON.stringify(value); } catch (e) {}
-    try { return String(value); } catch (err) {}
+    if (typeof value === 'number' || typeof value === 'boolean')
+      return String(value);
+    try {
+      return JSON.stringify(value);
+    } catch (e) {}
+    try {
+      return String(value);
+    } catch (err) {}
     return '[unprintable value]';
   }
 
@@ -336,7 +389,7 @@
     if (!id) return;
     wsRequestMeta[id] = {
       label: label || 'WebSocket request',
-      optional: !!optional
+      optional: !!optional,
     };
   }
 
@@ -347,14 +400,25 @@
   }
 
   function isWsUnauthorized(error) {
-    var code = error && error.code !== undefined ? String(error.code).toLowerCase() : '';
-    var message = error && error.message !== undefined ? String(error.message).toLowerCase() : '';
+    var code =
+      error && error.code !== undefined ? String(error.code).toLowerCase() : '';
+    var message =
+      error && error.message !== undefined
+        ? String(error.message).toLowerCase()
+        : '';
     return code === 'unauthorized' || message.indexOf('unauthorized') !== -1;
   }
 
   function formatWsResultError(msg, meta) {
     var label = meta && meta.label ? meta.label : 'untracked WebSocket request';
-    return 'id=' + msg.id + '\nrequest=' + label + '\n' + formatErrorForOverlay(msg.error || msg);
+    return (
+      'id=' +
+      msg.id +
+      '\nrequest=' +
+      label +
+      '\n' +
+      formatErrorForOverlay(msg.error || msg)
+    );
   }
 
   function isAuthStatus(status) {
@@ -376,7 +440,8 @@
     var hash = 2166136261;
     for (var i = 0; i < value.length; i++) {
       hash ^= value.charCodeAt(i);
-      hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+      hash +=
+        (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
       hash = hash >>> 0;
     }
     return 'fnv32:' + ('0000000' + hash.toString(16)).slice(-8);
@@ -418,7 +483,7 @@
       'WebSocket auth sends: ' + wsAuthSendAttempts,
       'WebSocket last send: ' + wsLastSendStatus,
       'WebSocket error event: ' + (wsLastErrorSeen ? 'yes' : 'no'),
-      'WebSocket close: ' + getWebSocketCloseLabel()
+      'WebSocket close: ' + getWebSocketCloseLabel(),
     ];
   }
 
@@ -432,17 +497,23 @@
     wsAuthenticated = false;
     stopRestFallbackPolling();
     setConnStatus('disconnected');
-    reportHavenError('AUTH ERROR', [
-      'Home Assistant rejected the access token.',
-      '',
-      details || source || 'Authentication failed.',
-      ''
-    ].concat(getAuthDiagnosticLines()).concat([
-      '',
-      'Fix: create or paste a new Long-Lived Access Token for this Home Assistant user.',
-      'If Credential source is device config, update or remove device.ha_token in the JSON file.',
-      'If Credential source is localStorage, use the setup screen to save the new token.'
-    ]).join('\n'));
+    reportHavenError(
+      'AUTH ERROR',
+      [
+        'Home Assistant rejected the access token.',
+        '',
+        details || source || 'Authentication failed.',
+        '',
+      ]
+        .concat(getAuthDiagnosticLines())
+        .concat([
+          '',
+          'Fix: create or paste a new Long-Lived Access Token for this Home Assistant user.',
+          'If Credential source is device config, update or remove device.ha_token in the JSON file.',
+          'If Credential source is localStorage, use the setup screen to save the new token.',
+        ])
+        .join('\n'),
+    );
     showSetup();
   }
 
@@ -450,12 +521,13 @@
     if (authErrorReported || restAuthWarningReported || wsAuthenticated) return;
     restAuthWarningDetails = {
       source: source,
-      details: details
+      details: details,
     };
     if (restAuthWarningTimer) return;
-    restAuthWarningTimer = setTimeout(function() {
+    restAuthWarningTimer = setTimeout(function () {
       restAuthWarningTimer = null;
-      if (authErrorReported || restAuthWarningReported || wsAuthenticated) return;
+      if (authErrorReported || restAuthWarningReported || wsAuthenticated)
+        return;
       restAuthWarningReported = true;
       var pending = restAuthWarningDetails || {};
       restAuthWarningDetails = null;
@@ -464,16 +536,22 @@
   }
 
   function reportRestAuthWarning(source, details) {
-    reportHavenError('REST AUTH WARNING', [
-      'Home Assistant returned 401/403 for a REST request.',
-      '',
-      details || source || 'REST authentication failed.',
-      ''
-    ].concat(getAuthDiagnosticLines()).concat([
-      '',
-      'WebSocket auth will still be checked. If WebSocket connects, this warning can be ignored.',
-      'If WebSocket also returns auth_invalid, create a new Long-Lived Access Token.'
-    ]).join('\n'));
+    reportHavenError(
+      'REST AUTH WARNING',
+      [
+        'Home Assistant returned 401/403 for a REST request.',
+        '',
+        details || source || 'REST authentication failed.',
+        '',
+      ]
+        .concat(getAuthDiagnosticLines())
+        .concat([
+          '',
+          'WebSocket auth will still be checked. If WebSocket connects, this warning can be ignored.',
+          'If WebSocket also returns auth_invalid, create a new Long-Lived Access Token.',
+        ])
+        .join('\n'),
+    );
   }
 
   function markRestStateFetchSucceeded() {
@@ -496,24 +574,37 @@
   function scheduleWsHandshakeClosedReport() {
     if (wsHandshakeCloseReported || restStateFetchSucceeded) return;
     if (wsHandshakeCloseTimer) return;
-    wsHandshakeCloseTimer = setTimeout(function() {
+    wsHandshakeCloseTimer = setTimeout(function () {
       wsHandshakeCloseTimer = null;
-      if (wsHandshakeCloseReported || restStateFetchSucceeded || wsAuthenticated) return;
+      if (
+        wsHandshakeCloseReported ||
+        restStateFetchSucceeded ||
+        wsAuthenticated
+      )
+        return;
       wsHandshakeCloseReported = true;
-      reportHavenError('WEBSOCKET HANDSHAKE WARNING', [
-        'WebSocket closed before Home Assistant sent auth_required.',
-        '',
-        'The token was not checked on this WebSocket attempt, and REST state fallback has not succeeded yet.',
-        ''
-      ].concat(getAuthDiagnosticLines()).concat([
-        '',
-        'This usually means the Kindle browser, a proxy, or the network path cannot keep the Home Assistant WebSocket open.'
-      ]).join('\n'));
+      reportHavenError(
+        'WEBSOCKET HANDSHAKE WARNING',
+        [
+          'WebSocket closed before Home Assistant sent auth_required.',
+          '',
+          'The token was not checked on this WebSocket attempt, and REST state fallback has not succeeded yet.',
+          '',
+        ]
+          .concat(getAuthDiagnosticLines())
+          .concat([
+            '',
+            'This usually means the Kindle browser, a proxy, or the network path cannot keep the Home Assistant WebSocket open.',
+          ])
+          .join('\n'),
+      );
     }, 8000);
   }
 
   function getIsoTimestamp() {
-    try { return new Date().toISOString(); } catch (e) {}
+    try {
+      return new Date().toISOString();
+    } catch (e) {}
     return String(new Date());
   }
 
@@ -521,7 +612,7 @@
     var lines = [
       fallback || 'Request failed.',
       'URL: ' + url,
-      'REST URL mode: ' + getRestUrlMode()
+      'REST URL mode: ' + getRestUrlMode(),
     ];
     if (xhr) {
       lines.push('HTTP status: ' + xhr.status);
@@ -538,29 +629,43 @@
     restStatesPollFailureCount += 1;
     if (isRestOnlyMode()) setConnStatus('disconnected');
 
-    if (restStateFetchSucceeded && restStatesPollFailureCount < REST_POLL_WARNING_FAILURES) return;
+    if (
+      restStateFetchSucceeded &&
+      restStatesPollFailureCount < REST_POLL_WARNING_FAILURES
+    )
+      return;
     if (restStateFetchSucceeded && restStatesPollWarningReported) return;
 
     if (restStateFetchSucceeded) {
       restStatesPollWarningReported = true;
-      reportHavenError('REST POLL WARNING', [
-        'REST state polling has failed repeatedly after a successful load.',
-        '',
-        details,
-        '',
-        'Last successful REST state load: ' + restStateLastSuccessAt,
-        'Consecutive poll failures: ' + restStatesPollFailureCount,
-        '',
-        'The dashboard may keep showing cached state until the next successful poll.'
-      ].concat(getAuthDiagnosticLines()).join('\n'));
+      reportHavenError(
+        'REST POLL WARNING',
+        [
+          'REST state polling has failed repeatedly after a successful load.',
+          '',
+          details,
+          '',
+          'Last successful REST state load: ' + restStateLastSuccessAt,
+          'Consecutive poll failures: ' + restStatesPollFailureCount,
+          '',
+          'The dashboard may keep showing cached state until the next successful poll.',
+        ]
+          .concat(getAuthDiagnosticLines())
+          .join('\n'),
+      );
       return;
     }
 
-    reportHavenError('REST STATES ERROR', [
-      'REST state polling failed before any successful state load.',
-      '',
-      details
-    ].concat(getAuthDiagnosticLines()).join('\n'));
+    reportHavenError(
+      'REST STATES ERROR',
+      [
+        'REST state polling failed before any successful state load.',
+        '',
+        details,
+      ]
+        .concat(getAuthDiagnosticLines())
+        .join('\n'),
+    );
   }
 
   function fetchJson(url, callback) {
@@ -611,7 +716,7 @@
     var cw = config.device.canvas.width;
     var ch = config.device.canvas.height;
 
-    canvas.style.width  = cw + 'px';
+    canvas.style.width = cw + 'px';
     canvas.style.height = ch + 'px';
     canvas.style.background = resolveColor(config.theme.colors.background);
 
@@ -619,8 +724,9 @@
     if (config.theme && config.theme.style) {
       canvas.classList.add('theme-' + config.theme.style);
       var themeLink = document.createElement('link');
-      themeLink.rel  = 'stylesheet';
-      themeLink.href = 'themes/' + config.theme.style + '.css?v=' + HAVEN_VERSION;
+      themeLink.rel = 'stylesheet';
+      themeLink.href =
+        'themes/' + config.theme.style + '.css?v=' + HAVEN_VERSION;
       document.head.appendChild(themeLink);
     }
 
@@ -633,29 +739,28 @@
 
   function scaleCanvas() {
     var canvas = document.getElementById('canvas');
-    var cw     = config.device.canvas.width;
-    var ch     = config.device.canvas.height;
+    var cw = config.device.canvas.width;
+    var ch = config.device.canvas.height;
 
     var availW = window.innerWidth;
     var availH = window.innerHeight;
 
     // Scale to fit while preserving aspect ratio
-    var scale  = Math.min(availW / cw, availH / ch);
+    var scale = Math.min(availW / cw, availH / ch);
 
     // Calculate centering offsets
     var scaledW = Math.floor(cw * scale);
     var scaledH = Math.floor(ch * scale);
-    var left    = Math.floor((availW - scaledW) / 2);
-    var top     = Math.floor((availH - scaledH) / 2);
+    var left = Math.floor((availW - scaledW) / 2);
+    var top = Math.floor((availH - scaledH) / 2);
 
-    canvas.style.position              = 'absolute';
-    canvas.style.left                  = left + 'px';
-    canvas.style.top                   = top  + 'px';
+    canvas.style.position = 'absolute';
+    canvas.style.left = left + 'px';
+    canvas.style.top = top + 'px';
     canvas.style.webkitTransformOrigin = '0 0';
-    canvas.style.transformOrigin       = '0 0';
-    canvas.style.webkitTransform       = 'scale(' + scale + ')';
-    canvas.style.transform             = 'scale(' + scale + ')';
-
+    canvas.style.transformOrigin = '0 0';
+    canvas.style.webkitTransform = 'scale(' + scale + ')';
+    canvas.style.transform = 'scale(' + scale + ')';
   }
 
   // ---- Page rendering ---------------------------------------
@@ -666,15 +771,19 @@
   function renderPage0() {
     var page0Config = null;
     for (var i = 0; i < config.pages.length; i++) {
-      if (config.pages[i].id === 0) { page0Config = config.pages[i]; break; }
+      if (config.pages[i].id === 0) {
+        page0Config = config.pages[i];
+        break;
+      }
     }
-    if (!page0Config) return;  // no page 0 defined - nothing to do
+    if (!page0Config) return; // no page 0 defined - nothing to do
 
     // Create persistent overlay div inside the canvas
     var wrapper = document.getElementById('canvas');
     var overlay = document.createElement('div');
     overlay.id = 'page0-overlay';
-    overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;';
+    overlay.style.cssText =
+      'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;';
     wrapper.appendChild(overlay);
 
     // Temporarily swap entityCallbacks for page0Callbacks so widget
@@ -693,14 +802,15 @@
     entityCallbacks = savedCallbacks;
 
     // Re-enable pointer events on interactive page 0 widgets
-    var els = overlay.querySelectorAll('.widget-button, .widget-image, .widget-switch');
+    var els = overlay.querySelectorAll(
+      '.widget-button, .widget-image, .widget-switch',
+    );
     for (var e = 0; e < els.length; e++) {
       els[e].style.pointerEvents = 'auto';
     }
 
     // Pre-fetch entity states for page 0 entities
     subscribeToPageEntities(page0Config);
-
   }
 
   function renderPage(pageId) {
@@ -709,7 +819,7 @@
     // Clear entity callbacks from previous page
     entityCallbacks = {};
 
-    var canvas  = document.getElementById('canvas');
+    var canvas = document.getElementById('canvas');
     // Preserve page 0 overlay while clearing page content
     var page0 = document.getElementById('page0-overlay');
     if (page0 && page0.parentNode === canvas) {
@@ -731,7 +841,10 @@
 
     var pageConfig = null;
     for (var i = 0; i < config.pages.length; i++) {
-      if (config.pages[i].id === pageId) { pageConfig = config.pages[i]; break; }
+      if (config.pages[i].id === pageId) {
+        pageConfig = config.pages[i];
+        break;
+      }
     }
 
     if (!pageConfig) {
@@ -747,19 +860,21 @@
         var base = window.location.pathname.replace(/\/[^\/]*$/, '/');
         imgUrl = base + imgUrl;
       }
-      canvas.style.backgroundImage    = 'url(' + imgUrl + ')';
-      canvas.style.backgroundSize     = pageConfig.background_image_fit || 'cover';
+      canvas.style.backgroundImage = 'url(' + imgUrl + ')';
+      canvas.style.backgroundSize = pageConfig.background_image_fit || 'cover';
       canvas.style.backgroundPosition = 'center';
-      canvas.style.backgroundRepeat   = 'no-repeat';
+      canvas.style.backgroundRepeat = 'no-repeat';
       // Optional dim layer via opacity on a pseudo-overlay div
       var dimOpacity = pageConfig.background_image_opacity;
       if (dimOpacity !== undefined && dimOpacity < 1) {
         var dim = document.createElement('div');
-        dim.style.position   = 'absolute';
-        dim.style.top        = '0'; dim.style.left = '0';
-        dim.style.width      = '100%'; dim.style.height = '100%';
+        dim.style.position = 'absolute';
+        dim.style.top = '0';
+        dim.style.left = '0';
+        dim.style.width = '100%';
+        dim.style.height = '100%';
         dim.style.background = '#000';
-        dim.style.opacity    = String(1 - dimOpacity);
+        dim.style.opacity = String(1 - dimOpacity);
         dim.style.pointerEvents = 'none';
         canvas.appendChild(dim);
       }
@@ -768,16 +883,29 @@
     }
 
     // Render each widget
-    var nEntity = 0, nEntity2 = 0, nOverrides = 0;
+    var nEntity = 0,
+      nEntity2 = 0,
+      nOverrides = 0;
     for (var w = 0; w < pageConfig.widgets.length; w++) {
       renderWidget(pageConfig.widgets[w], canvas);
       var wc = pageConfig.widgets[w];
-      if (wc.entity)    nEntity++;
-      if (wc.entity2)   nEntity2++;
+      if (wc.entity) nEntity++;
+      if (wc.entity2) nEntity2++;
       if (wc.overrides) nOverrides += wc.overrides.length;
     }
-    console.log('HAven page ' + pageId + ': ' + pageConfig.widgets.length + ' widgets, ' +
-      nEntity + ' entity, ' + nEntity2 + ' entity2, ' + nOverrides + ' override rules');
+    console.log(
+      'HAven page ' +
+        pageId +
+        ': ' +
+        pageConfig.widgets.length +
+        ' widgets, ' +
+        nEntity +
+        ' entity, ' +
+        nEntity2 +
+        ' entity2, ' +
+        nOverrides +
+        ' override rules',
+    );
 
     // Re-attach page 0 overlay on top
     if (page0) {
@@ -800,7 +928,7 @@
   // ---- Page navigation --------------------------------------
   function getPageNavConfig() {
     var nav = {};
-    var dev = (config && config.device) ? config.device : {};
+    var dev = config && config.device ? config.device : {};
     var base = dev.page_nav;
     var alt = dev.page_navigation;
 
@@ -827,27 +955,57 @@
     var nav = getPageNavConfig();
     var size = String(nav.size || 'medium').toLowerCase();
     var presets = {
-      micro:  { dot: 4,  hit: 6,  gap: 4,  padY: 6,  padX: 8,  activeScale: 1.2 },
-      tiny:   { dot: 6,  hit: 8,  gap: 6,  padY: 8,  padX: 12, activeScale: 1.2 },
-      small:  { dot: 9,  hit: 10, gap: 8,  padY: 12, padX: 16, activeScale: 1.2 },
-      medium: { dot: 12, hit: 14, gap: 10, padY: 18, padX: 24, activeScale: 1.25 },
-      large:  { dot: 15, hit: 18, gap: 12, padY: 22, padX: 30, activeScale: 1.3 }
+      micro: { dot: 4, hit: 6, gap: 4, padY: 6, padX: 8, activeScale: 1.2 },
+      tiny: { dot: 6, hit: 8, gap: 6, padY: 8, padX: 12, activeScale: 1.2 },
+      small: { dot: 9, hit: 10, gap: 8, padY: 12, padX: 16, activeScale: 1.2 },
+      medium: {
+        dot: 12,
+        hit: 14,
+        gap: 10,
+        padY: 18,
+        padX: 24,
+        activeScale: 1.25,
+      },
+      large: {
+        dot: 15,
+        hit: 18,
+        gap: 12,
+        padY: 22,
+        padX: 30,
+        activeScale: 1.3,
+      },
     };
     if (!presets[size]) size = 'medium';
 
     return {
       size: size,
       metrics: presets[size],
-      background: resolveColor(nav.background_color !== undefined ? nav.background_color : 'rgba(0,0,0,0.28)'),
-      primary: resolveColor(nav.primary_color !== undefined ? nav.primary_color : 'rgba(255,255,255,0.95)'),
-      secondary: resolveColor(nav.secondary_color !== undefined ? nav.secondary_color : 'rgba(255,255,255,0.40)')
+      background: resolveColor(
+        nav.background_color !== undefined
+          ? nav.background_color
+          : 'rgba(0,0,0,0.28)',
+      ),
+      primary: resolveColor(
+        nav.primary_color !== undefined
+          ? nav.primary_color
+          : 'rgba(255,255,255,0.95)',
+      ),
+      secondary: resolveColor(
+        nav.secondary_color !== undefined
+          ? nav.secondary_color
+          : 'rgba(255,255,255,0.40)',
+      ),
     };
   }
 
   function stylePageDot(dot, isActive) {
     if (!pageNavTheme || !dot) return;
-    dot.style.background = isActive ? pageNavTheme.primary : pageNavTheme.secondary;
-    dot.style.transform = isActive ? ('scale(' + pageNavTheme.metrics.activeScale + ')') : 'scale(1)';
+    dot.style.background = isActive
+      ? pageNavTheme.primary
+      : pageNavTheme.secondary;
+    dot.style.transform = isActive
+      ? 'scale(' + pageNavTheme.metrics.activeScale + ')'
+      : 'scale(1)';
     dot.style.webkitTransform = dot.style.transform;
     dot.style.boxShadow = 'none';
     dot.style.webkitBoxShadow = 'none';
@@ -899,7 +1057,7 @@
     nav.style.display = '';
 
     var navCfg = getPageNavConfig();
-    var showDots = (navCfg.show !== false);
+    var showDots = navCfg.show !== false;
 
     if (!showDots) {
       nav.style.display = 'none';
@@ -910,10 +1068,10 @@
     if (config.pages.length <= 1) return;
 
     for (var i = 0; i < config.pages.length; i++) {
-      if (config.pages[i].id === 0) continue;  // page 0 is persistent, not in nav dots
+      if (config.pages[i].id === 0) continue; // page 0 is persistent, not in nav dots
       (function (page) {
         var dot = document.createElement('div');
-        dot.className   = 'page-dot';
+        dot.className = 'page-dot';
         dot.setAttribute('data-page', page.id);
         dot.addEventListener('click', function () {
           navigateTo(page.id);
@@ -928,7 +1086,7 @@
 
   // ---- Swipe gesture navigation ----------------------------
   function setupSwipeNav() {
-    var canvas  = document.getElementById('canvas');
+    var canvas = document.getElementById('canvas');
     var touchStartX = 0;
     var touchStartY = 0;
     var touchStartTime = 0;
@@ -938,81 +1096,103 @@
     var SWIPE_MIN_DOMINANCE = 0.7; // allow modest diagonal movement on tablets
 
     // Any touch or click anywhere on the canvas resets the return timer
-    canvas.addEventListener('touchstart', function(e) {
-      resetReturnTimer();
-      if (!e.touches || !e.touches.length) return;
-      if (e.touches.length > 1) {
-        touchStartValid = false;
-        return;
-      }
-      touchStartX    = e.touches[0].clientX;
-      touchStartY    = e.touches[0].clientY;
-      touchStartTime = Date.now();
-      touchStartValid = true;
-    }, { passive: true });
+    canvas.addEventListener(
+      'touchstart',
+      function (e) {
+        resetReturnTimer();
+        if (!e.touches || !e.touches.length) return;
+        if (e.touches.length > 1) {
+          touchStartValid = false;
+          return;
+        }
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchStartTime = Date.now();
+        touchStartValid = true;
+      },
+      { passive: true },
+    );
 
-    canvas.addEventListener('touchmove', function(e) {
-      if (!touchStartValid) return;
-      if (!e.touches || !e.touches.length) return;
-      if (e.touches.length > 1) return;
+    canvas.addEventListener(
+      'touchmove',
+      function (e) {
+        if (!touchStartValid) return;
+        if (!e.touches || !e.touches.length) return;
+        if (e.touches.length > 1) return;
 
-      var dx = e.touches[0].clientX - touchStartX;
-      var dy = e.touches[0].clientY - touchStartY;
-      var adx = Math.abs(dx);
-      var ady = Math.abs(dy);
+        var dx = e.touches[0].clientX - touchStartX;
+        var dy = e.touches[0].clientY - touchStartY;
+        var adx = Math.abs(dx);
+        var ady = Math.abs(dy);
 
-      // When movement is predominantly horizontal, prevent browser pull-to-refresh
-      // and let the dashboard own the gesture.
-      if (adx >= 10 && adx >= (ady * 0.75)) {
-        e.preventDefault();
-      }
-    }, { passive: false });
+        // When movement is predominantly horizontal, prevent browser pull-to-refresh
+        // and let the dashboard own the gesture.
+        if (adx >= 10 && adx >= ady * 0.75) {
+          e.preventDefault();
+        }
+      },
+      { passive: false },
+    );
 
-    canvas.addEventListener('mousedown', function() {
+    canvas.addEventListener('mousedown', function () {
       resetReturnTimer();
     });
 
-    canvas.addEventListener('touchend', function(e) {
-      if (!touchStartValid) return;
-      touchStartValid = false;
-      if (!e.changedTouches || !e.changedTouches.length) return;
-      var dx   = e.changedTouches[0].clientX - touchStartX;
-      var dy   = e.changedTouches[0].clientY - touchStartY;
-      var dt   = Date.now() - touchStartTime;
-      var adx  = Math.abs(dx);
-      var ady  = Math.abs(dy);
+    canvas.addEventListener(
+      'touchend',
+      function (e) {
+        if (!touchStartValid) return;
+        touchStartValid = false;
+        if (!e.changedTouches || !e.changedTouches.length) return;
+        var dx = e.changedTouches[0].clientX - touchStartX;
+        var dy = e.changedTouches[0].clientY - touchStartY;
+        var dt = Date.now() - touchStartTime;
+        var adx = Math.abs(dx);
+        var ady = Math.abs(dy);
 
-      // Must be: horizontal enough, quick enough, and long enough.
-      // Relaxed dominance check improves reliability on touch devices where
-      // a slight diagonal drift is common.
-      if (dt > SWIPE_MAX_TIME_MS) return;
-      if (adx < SWIPE_MIN_X_PX) return;
-      if (adx < (ady * SWIPE_MIN_DOMINANCE)) return;
+        // Must be: horizontal enough, quick enough, and long enough.
+        // Relaxed dominance check improves reliability on touch devices where
+        // a slight diagonal drift is common.
+        if (dt > SWIPE_MAX_TIME_MS) return;
+        if (adx < SWIPE_MIN_X_PX) return;
+        if (adx < ady * SWIPE_MIN_DOMINANCE) return;
 
-      var pageIds = config.pages.map(function(p) { return p.id; }).filter(function(id) { return id !== 0; });
-      var idx     = pageIds.indexOf(currentPage);
+        var pageIds = config.pages
+          .map(function (p) {
+            return p.id;
+          })
+          .filter(function (id) {
+            return id !== 0;
+          });
+        var idx = pageIds.indexOf(currentPage);
 
-      if (dx < 0 && idx < pageIds.length - 1) {
-        // Swipe left -> next page
-        navigateTo(pageIds[idx + 1]);
-        resetReturnTimer();
-      } else if (dx > 0 && idx > 0) {
-        // Swipe right -> previous page
-        navigateTo(pageIds[idx - 1]);
-        resetReturnTimer();
-      }
-    }, { passive: true });
+        if (dx < 0 && idx < pageIds.length - 1) {
+          // Swipe left -> next page
+          navigateTo(pageIds[idx + 1]);
+          resetReturnTimer();
+        } else if (dx > 0 && idx > 0) {
+          // Swipe right -> previous page
+          navigateTo(pageIds[idx - 1]);
+          resetReturnTimer();
+        }
+      },
+      { passive: true },
+    );
 
-    canvas.addEventListener('touchcancel', function() {
-      touchStartValid = false;
-    }, { passive: true });
+    canvas.addEventListener(
+      'touchcancel',
+      function () {
+        touchStartValid = false;
+      },
+      { passive: true },
+    );
   }
 
   function updatePageNav(pageId) {
     var dots = document.querySelectorAll('.page-dot');
     for (var i = 0; i < dots.length; i++) {
       var dot = dots[i];
-      var isActive = (parseInt(dot.getAttribute('data-page'), 10) === pageId);
+      var isActive = parseInt(dot.getAttribute('data-page'), 10) === pageId;
       dot.className = isActive ? 'page-dot active' : 'page-dot';
       stylePageDot(dot, isActive);
     }
@@ -1020,7 +1200,7 @@
 
   function navigateTo(pageId) {
     if (pageId === currentPage) return;
-    if (pageId === 0) return;  // page 0 is a persistent overlay, not navigable
+    if (pageId === 0) return; // page 0 is a persistent overlay, not navigable
     renderPage(pageId);
     if (history.replaceState) {
       history.replaceState(null, '', setUrlParam('page', pageId));
@@ -1030,8 +1210,12 @@
   function getNavigablePageIds() {
     if (!config || !config.pages) return [];
     return config.pages
-      .map(function(p) { return p.id; })
-      .filter(function(id) { return id !== 0; });
+      .map(function (p) {
+        return p.id;
+      })
+      .filter(function (id) {
+        return id !== 0;
+      });
   }
 
   function resolveNavigatePage(action) {
@@ -1086,8 +1270,8 @@
     if (!screensaverListenersAdded) {
       screensaverListenersAdded = true;
       document.addEventListener('touchstart', resetScreensaverTimer, true);
-      document.addEventListener('mousedown',  resetScreensaverTimer, true);
-      document.addEventListener('keydown',    resetScreensaverTimer, true);
+      document.addEventListener('mousedown', resetScreensaverTimer, true);
+      document.addEventListener('keydown', resetScreensaverTimer, true);
     }
     resetScreensaverTimer();
   }
@@ -1104,28 +1288,32 @@
     if (screensaverActive) return;
     screensaverActive = true;
 
-    var ss       = config.device.screensaver;
-    var opacity  = ss.opacity !== undefined ? ss.opacity : 0.95;
-    var text     = ss.hasOwnProperty('text') ? ss.text : null;
-    var colors   = [
+    var ss = config.device.screensaver;
+    var opacity = ss.opacity !== undefined ? ss.opacity : 0.95;
+    var text = ss.hasOwnProperty('text') ? ss.text : null;
+    var colors = [
       '#ffffff',
       resolveColor('primary'),
       resolveColor('warning'),
-      resolveColor('danger')
+      resolveColor('danger'),
     ];
     var colorIdx = 0;
 
     var overlay = document.createElement('div');
     overlay.id = 'haven-screensaver';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;' +
-      'background:rgba(0,0,0,' + opacity + ');z-index:10000;cursor:none;' +
+    overlay.style.cssText =
+      'position:fixed;top:0;left:0;width:100%;height:100%;' +
+      'background:rgba(0,0,0,' +
+      opacity +
+      ');z-index:10000;cursor:none;' +
       'transition:opacity 0.6s ease';
     overlay.style.opacity = '0';
 
     var label = text ? document.createElement('div') : null;
     if (label) {
       label.textContent = text;
-      label.style.cssText = 'position:absolute;font-size:2rem;font-weight:bold;' +
+      label.style.cssText =
+        'position:absolute;font-size:2rem;font-weight:bold;' +
         'color:#ffffff;pointer-events:none;user-select:none;white-space:nowrap;' +
         'font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif;letter-spacing:0.05em;';
       overlay.appendChild(label);
@@ -1134,13 +1322,18 @@
     screensaverEl = overlay;
 
     // Fade in
-    requestAnimationFrame(function() { overlay.style.opacity = '1'; });
+    requestAnimationFrame(function () {
+      overlay.style.opacity = '1';
+    });
 
     if (label) {
       // Wait for label to have dimensions before starting animation
-      setTimeout(function() {
-        var x  = Math.random() * Math.max(0, overlay.clientWidth  - label.offsetWidth);
-        var y  = Math.random() * Math.max(0, overlay.clientHeight - label.offsetHeight);
+      setTimeout(function () {
+        var x =
+          Math.random() * Math.max(0, overlay.clientWidth - label.offsetWidth);
+        var y =
+          Math.random() *
+          Math.max(0, overlay.clientHeight - label.offsetHeight);
         var dx = 1.2;
         var dy = 0.8;
 
@@ -1152,18 +1345,35 @@
           var lh = label.offsetHeight;
           var bounced = false;
 
-          x += dx; y += dy;
-          if (x <= 0)        { x = 0;       dx =  Math.abs(dx); bounced = true; }
-          if (x + lw >= ow)  { x = ow - lw; dx = -Math.abs(dx); bounced = true; }
-          if (y <= 0)        { y = 0;       dy =  Math.abs(dy); bounced = true; }
-          if (y + lh >= oh)  { y = oh - lh; dy = -Math.abs(dy); bounced = true; }
+          x += dx;
+          y += dy;
+          if (x <= 0) {
+            x = 0;
+            dx = Math.abs(dx);
+            bounced = true;
+          }
+          if (x + lw >= ow) {
+            x = ow - lw;
+            dx = -Math.abs(dx);
+            bounced = true;
+          }
+          if (y <= 0) {
+            y = 0;
+            dy = Math.abs(dy);
+            bounced = true;
+          }
+          if (y + lh >= oh) {
+            y = oh - lh;
+            dy = -Math.abs(dy);
+            bounced = true;
+          }
 
           if (bounced) {
             colorIdx = (colorIdx + 1) % colors.length;
             label.style.color = colors[colorIdx];
           }
           label.style.left = Math.round(x) + 'px';
-          label.style.top  = Math.round(y) + 'px';
+          label.style.top = Math.round(y) + 'px';
           screensaverRaf = requestAnimationFrame(animate);
         }
         screensaverRaf = requestAnimationFrame(animate);
@@ -1173,12 +1383,17 @@
 
   function dismissScreensaver() {
     screensaverActive = false;
-    if (screensaverRaf) { cancelAnimationFrame(screensaverRaf); screensaverRaf = null; }
+    if (screensaverRaf) {
+      cancelAnimationFrame(screensaverRaf);
+      screensaverRaf = null;
+    }
     if (screensaverEl) {
       var el = screensaverEl;
       screensaverEl = null;
       el.style.opacity = '0';
-      setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 650);
+      setTimeout(function () {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      }, 650);
     }
   }
 
@@ -1201,7 +1416,7 @@
   // ---- Internal time entity --------------------------------
   // Updates internal.currentdtm once per minute (aligned to minute boundary)
   function startInternalTime() {
-    updateInternalEntity(INTERNAL_TIME_ENTITY, (new Date()).toISOString());
+    updateInternalEntity(INTERNAL_TIME_ENTITY, new Date().toISOString());
     if (internalTimeTimer) {
       clearTimeout(internalTimeTimer);
       internalTimeTimer = null;
@@ -1212,9 +1427,9 @@
     if (msToNextMinute < 0) msToNextMinute = 0;
 
     internalTimeTimer = setTimeout(function () {
-      updateInternalEntity(INTERNAL_TIME_ENTITY, (new Date()).toISOString());
+      updateInternalEntity(INTERNAL_TIME_ENTITY, new Date().toISOString());
       internalTimeTimer = setInterval(function () {
-        updateInternalEntity(INTERNAL_TIME_ENTITY, (new Date()).toISOString());
+        updateInternalEntity(INTERNAL_TIME_ENTITY, new Date().toISOString());
       }, 60000);
     }, msToNextMinute);
   }
@@ -1222,7 +1437,7 @@
   // ---- Widget rendering -------------------------------------
   function supportsWidgetAnimation(w) {
     if (!w || !w.type) return false;
-    return (w.type === 'label' || w.type === 'rect' || w.type === 'rectangle');
+    return w.type === 'label' || w.type === 'rect' || w.type === 'rectangle';
   }
 
   function createWidgetRenderSurface(host, w) {
@@ -1241,21 +1456,31 @@
   function normalizeAnimationName(name) {
     if (name === undefined || name === null) return '';
     var n = String(name).toLowerCase();
-    if (n === 'pulse' || n === 'pulse_fast' || n === 'blink' || n === 'breathe') return n;
+    if (n === 'pulse' || n === 'pulse_fast' || n === 'blink' || n === 'breathe')
+      return n;
     return '';
   }
 
   function applyWidgetAnimation(host, w, overrides) {
     if (!host || !w || !supportsWidgetAnimation(w)) return;
     var ovr = overrides || null;
-    var name = normalizeAnimationName((ovr && ovr.animation !== undefined) ? ovr.animation : w.animation);
+    var name = normalizeAnimationName(
+      ovr && ovr.animation !== undefined ? ovr.animation : w.animation,
+    );
 
-    host.classList.remove('widget-anim-active', 'widget-anim-pulse', 'widget-anim-pulse-fast', 'widget-anim-blink', 'widget-anim-breathe');
+    host.classList.remove(
+      'widget-anim-active',
+      'widget-anim-pulse',
+      'widget-anim-pulse-fast',
+      'widget-anim-blink',
+      'widget-anim-breathe',
+    );
     if (!name) return;
 
     host.classList.add('widget-anim-active');
     if (name === 'pulse') host.classList.add('widget-anim-pulse');
-    else if (name === 'pulse_fast') host.classList.add('widget-anim-pulse-fast');
+    else if (name === 'pulse_fast')
+      host.classList.add('widget-anim-pulse-fast');
     else if (name === 'blink') host.classList.add('widget-anim-blink');
     else if (name === 'breathe') host.classList.add('widget-anim-breathe');
   }
@@ -1263,11 +1488,11 @@
   function renderWidget(w, canvas) {
     var el = document.createElement('div');
     var contentEl = createWidgetRenderSurface(el, w);
-    el.id        = 'w-' + w.id;
+    el.id = 'w-' + w.id;
     el.className = 'widget';
-    el.style.left   = w.x + 'px';
-    el.style.top    = w.y + 'px';
-    el.style.width  = w.w + 'px';
+    el.style.left = w.x + 'px';
+    el.style.top = w.y + 'px';
+    el.style.width = w.w + 'px';
     el.style.height = w.h + 'px';
 
     // Apply base opacity if specified
@@ -1280,7 +1505,7 @@
       el.style.borderWidth = w.border_width + 'px';
       el.style.borderStyle = 'solid';
       el.style.borderColor = resolveColor(w.border_color || 'surface2');
-      el.style.boxSizing   = 'border-box';
+      el.style.boxSizing = 'border-box';
       // Mirror radius onto the outer host so the border follows the rounded corners.
       // (The inner .widget-surface carries the fill and its own border-radius, but
       // the CSS border is painted on the host element which needs the same value.)
@@ -1288,23 +1513,57 @@
     }
 
     switch (w.type) {
-      case 'label':        renderLabel(contentEl, w, el);       break;
-      case 'rect':         renderRectangle(contentEl, w, el);   break;
-      case 'rectangle':    renderRectangle(contentEl, w, el);   break;
-      case 'bar':          renderBar(contentEl, w);          break;
-      case 'slider':       renderSlider(contentEl, w);       break;
-      case 'switch':       renderSwitch(contentEl, w);       break;
-      case 'scene':        renderScene(contentEl, w);        break;
-      case 'button':       renderButton(contentEl, w);       break;
-      case 'clock':        renderClock(contentEl, w);        break;
-      case 'image':        renderImage(contentEl, w);        break;
-      case 'camera':       renderCamera(contentEl, w);       break;
-      case 'arc':          renderArc(contentEl, w);          break;
-      case 'agenda':       renderAgenda(contentEl, w);       break;
-      case 'tasks':        renderTasks(contentEl, w);        break;
-      case 'history_chart':    renderHistoryChart(contentEl, w);    break;
-      case 'weather_forecast': renderWeatherForecast(contentEl, w); break;
-      case 'line':          renderLine(contentEl, w);         break;
+      case 'label':
+        renderLabel(contentEl, w, el);
+        break;
+      case 'rect':
+        renderRectangle(contentEl, w, el);
+        break;
+      case 'rectangle':
+        renderRectangle(contentEl, w, el);
+        break;
+      case 'bar':
+        renderBar(contentEl, w);
+        break;
+      case 'slider':
+        renderSlider(contentEl, w);
+        break;
+      case 'switch':
+        renderSwitch(contentEl, w);
+        break;
+      case 'scene':
+        renderScene(contentEl, w);
+        break;
+      case 'button':
+        renderButton(contentEl, w);
+        break;
+      case 'clock':
+        renderClock(contentEl, w);
+        break;
+      case 'image':
+        renderImage(contentEl, w);
+        break;
+      case 'camera':
+        renderCamera(contentEl, w);
+        break;
+      case 'arc':
+        renderArc(contentEl, w);
+        break;
+      case 'agenda':
+        renderAgenda(contentEl, w);
+        break;
+      case 'tasks':
+        renderTasks(contentEl, w);
+        break;
+      case 'history_chart':
+        renderHistoryChart(contentEl, w);
+        break;
+      case 'weather_forecast':
+        renderWeatherForecast(contentEl, w);
+        break;
+      case 'line':
+        renderLine(contentEl, w);
+        break;
       default:
         contentEl.style.background = 'rgba(255,0,0,0.3)';
         contentEl.textContent = 'Unknown: ' + w.type;
@@ -1371,8 +1630,8 @@
   function bindOverrideVisibility(el, w) {
     if (!hasVisibleOverrideRule(w)) return;
 
-    var stateCache = w.entity ? (entityStates[w.entity] || null) : null;
-    var state2Cache = w.entity2 ? (entityStates[w.entity2] || null) : null;
+    var stateCache = w.entity ? entityStates[w.entity] || null : null;
+    var state2Cache = w.entity2 ? entityStates[w.entity2] || null : null;
     var hasPageSource = hasOverrideSource(w, 'page');
 
     function updateVisibility() {
@@ -1380,21 +1639,21 @@
     }
 
     if (w.entity) {
-      registerEntityCallback(w.entity, function(state) {
+      registerEntityCallback(w.entity, function (state) {
         stateCache = state;
         updateVisibility();
       });
     }
 
     if (w.entity2) {
-      registerEntityCallback(w.entity2, function(state) {
+      registerEntityCallback(w.entity2, function (state) {
         state2Cache = state;
         updateVisibility();
       });
     }
 
     if (hasPageSource) {
-      registerEntityCallback(INTERNAL_PAGE_ENTITY, function() {
+      registerEntityCallback(INTERNAL_PAGE_ENTITY, function () {
         updateVisibility();
       });
     }
@@ -1406,8 +1665,8 @@
     if (!supportsWidgetAnimation(w)) return;
     if (!hasAnimationOverrideRule(w)) return;
 
-    var stateCache = w.entity ? (entityStates[w.entity] || null) : null;
-    var state2Cache = w.entity2 ? (entityStates[w.entity2] || null) : null;
+    var stateCache = w.entity ? entityStates[w.entity] || null : null;
+    var state2Cache = w.entity2 ? entityStates[w.entity2] || null : null;
     var hasPageSource = hasOverrideSource(w, 'page');
 
     function updateAnimation() {
@@ -1416,21 +1675,21 @@
     }
 
     if (w.entity) {
-      registerEntityCallback(w.entity, function(state) {
+      registerEntityCallback(w.entity, function (state) {
         stateCache = state;
         updateAnimation();
       });
     }
 
     if (w.entity2) {
-      registerEntityCallback(w.entity2, function(state) {
+      registerEntityCallback(w.entity2, function (state) {
         state2Cache = state;
         updateAnimation();
       });
     }
 
     if (hasPageSource) {
-      registerEntityCallback(INTERNAL_PAGE_ENTITY, function() {
+      registerEntityCallback(INTERNAL_PAGE_ENTITY, function () {
         updateAnimation();
       });
     }
@@ -1442,51 +1701,61 @@
   function renderLabel(el, w, hostEl) {
     var host = hostEl || el;
     el.className += ' widget-label align-' + (w.align || 'left');
-    el.style.color          = resolveColor(w.color      || 'text');
-    el.style.background     = resolveColor(w.background || 'transparent');
-    el.style.fontSize       = (w.font_size || config.theme.font_size || 16) + 'px';
-    el.style.fontWeight     = w.font_weight || '400';
-    el.style.lineHeight     = '1';
-    el.style.padding        = '0';
+    el.style.color = resolveColor(w.color || 'text');
+    el.style.background = resolveColor(w.background || 'transparent');
+    el.style.fontSize = (w.font_size || config.theme.font_size || 16) + 'px';
+    el.style.fontWeight = w.font_weight || '400';
+    el.style.lineHeight = '1';
+    el.style.padding = '0';
     if (w.valign === 'top') el.style.alignItems = 'flex-start';
     else if (w.valign === 'bottom') el.style.alignItems = 'flex-end';
     else el.style.alignItems = 'center';
-    if (w.letter_spacing !== undefined) el.style.letterSpacing = w.letter_spacing + 'px';
-    if (w.opacity !== undefined)        el.style.opacity       = w.opacity;
+    if (w.letter_spacing !== undefined)
+      el.style.letterSpacing = w.letter_spacing + 'px';
+    if (w.opacity !== undefined) el.style.opacity = w.opacity;
 
     // Text overflow mode (default: crop - clip silently at widget edge)
     var mode = w.mode || 'crop';
     if (mode === 'dots') {
       // Switch to block layout so text-overflow: ellipsis works reliably
-      el.style.display      = 'block';
-      el.style.lineHeight   = w.h + 'px';     // vertical centre via line-height
-      el.style.textAlign    = w.align || 'left';
+      el.style.display = 'block';
+      el.style.lineHeight = w.h + 'px'; // vertical centre via line-height
+      el.style.textAlign = w.align || 'left';
       el.style.textOverflow = 'ellipsis';
       // overflow:hidden and white-space:nowrap already set by .widget-label CSS
     } else if (mode === 'wrap') {
-      el.style.whiteSpace        = 'normal';  // allow text to wrap within fixed box
-      el.style.webkitBoxAlign    = 'start';   // old webkit flex
-      el.style.msFlexAlign       = 'start';   // IE10 flex
-      el.style.alignItems        = 'flex-start'; // top-align wrapped text block
-      el.style.padding           = '4px';     // small vertical breathing room
+      el.style.whiteSpace = 'normal'; // allow text to wrap within fixed box
+      el.style.webkitBoxAlign = 'start'; // old webkit flex
+      el.style.msFlexAlign = 'start'; // IE10 flex
+      el.style.alignItems = 'flex-start'; // top-align wrapped text block
+      el.style.padding = '4px'; // small vertical breathing room
     }
     var text = w.text !== undefined ? String(w.text) : '';
     var initialText = text;
     var hasTemplateText = hasTemplate(text);
     var hasPrimaryInitialState = !w.entity || !!entityStates[w.entity];
     var hasSecondaryInitialState = !w.entity2 || !!entityStates[w.entity2];
-    if ((w.entity || w.entity2) && hasTemplateText && hasPrimaryInitialState && hasSecondaryInitialState) {
+    if (
+      (w.entity || w.entity2) &&
+      hasTemplateText &&
+      hasPrimaryInitialState &&
+      hasSecondaryInitialState
+    ) {
       initialText = applyTemplate(
         text,
-        w.entity ? (entityStates[w.entity] || null) : null,
-        w.entity2 ? (entityStates[w.entity2] || null) : null
+        w.entity ? entityStates[w.entity] || null : null,
+        w.entity2 ? entityStates[w.entity2] || null : null,
       );
     } else if ((w.entity || w.entity2) && hasTemplateText) {
       initialText = text.replace(/\{\{[\s\S]*?\}\}/g, '--');
     }
 
     // Single raw FA codepoint (legacy) - apply font directly
-    if (initialText.length === 1 && initialText.charCodeAt(0) >= 0xF000 && initialText.charCodeAt(0) <= 0xF8FF) {
+    if (
+      initialText.length === 1 &&
+      initialText.charCodeAt(0) >= 0xf000 &&
+      initialText.charCodeAt(0) <= 0xf8ff
+    ) {
       el.style.fontFamily = 'FontAwesome';
       setContent(el, initialText);
     } else {
@@ -1504,12 +1773,12 @@
       // Cache both states so whichever entity fires last can pass both to the update.
       // entity  = primary: drives format, overrides, and state/state_str/attr in templates.
       // entity2 = secondary: triggers re-renders and exposes state2/state_str2/attr2.
-      var stateCache  = w.entity  ? (entityStates[w.entity]  || null) : null;
-      var state2Cache = w.entity2 ? (entityStates[w.entity2] || null) : null;
+      var stateCache = w.entity ? entityStates[w.entity] || null : null;
+      var state2Cache = w.entity2 ? entityStates[w.entity2] || null : null;
 
       // Use var expression, not function declaration — declarations inside if blocks
       // are illegal in ES5 strict mode and behave inconsistently across browsers.
-      var doLabelUpdate = function() {
+      var doLabelUpdate = function () {
         updateLabelFromState(el, w, stateCache, state2Cache, host);
       };
 
@@ -1542,9 +1811,11 @@
     if (state) {
       if (w.entity_attribute) {
         var attrs = state.attributes || {};
-        val = (attrs[w.entity_attribute] !== undefined && attrs[w.entity_attribute] !== null)
-          ? attrs[w.entity_attribute]
-          : null;
+        val =
+          attrs[w.entity_attribute] !== undefined &&
+          attrs[w.entity_attribute] !== null
+            ? attrs[w.entity_attribute]
+            : null;
       } else {
         val = state.state;
       }
@@ -1553,15 +1824,24 @@
     // Apply text - handles plain text and [mdi:name] / [small:x] icon tokens
     var overrides = resolveOverrides(w, state, state2);
     var s = overrides || {};
-    var textOverride = (s.text !== undefined) ? String(s.text) : null;
-    var useTemplateText = (w.text && hasTemplate(w.text));
+    var textOverride = s.text !== undefined ? String(s.text) : null;
+    var useTemplateText = w.text && hasTemplate(w.text);
     // text is always a placeholder: shown when no entity is bound or before it loads.
     // Once an entity value is available it always wins, with or without format.
     // For icon+value combos use template expressions: "text": "[mdi:solar-panel] {{ state }}"
     var baseFallback = formatValue(val, w);
-    var baseText = textOverride !== null ? textOverride : (useTemplateText ? String(w.text) : baseFallback);
+    var baseText =
+      textOverride !== null
+        ? textOverride
+        : useTemplateText
+          ? String(w.text)
+          : baseFallback;
     var formatted = applyTemplate(baseText, state, state2);
-    if (formatted.length === 1 && formatted.charCodeAt(0) >= 0xF000 && formatted.charCodeAt(0) <= 0xF8FF) {
+    if (
+      formatted.length === 1 &&
+      formatted.charCodeAt(0) >= 0xf000 &&
+      formatted.charCodeAt(0) <= 0xf8ff
+    ) {
       el.style.fontFamily = 'FontAwesome';
       setContent(el, formatted);
     } else {
@@ -1572,12 +1852,15 @@
     // Apply state-based styles
     var colorToken = s.color || w.color || 'text';
     colorToken = applyTemplate(colorToken, state, state2);
-    el.style.color   = resolveColor(colorToken);
-    if (s.background !== undefined) el.style.background = resolveColor(s.background);
-    if (s.opacity   !== undefined) el.style.opacity       = s.opacity;
-    if (s.letter_spacing !== undefined) el.style.letterSpacing = s.letter_spacing + 'px';
+    el.style.color = resolveColor(colorToken);
+    if (s.background !== undefined)
+      el.style.background = resolveColor(s.background);
+    if (s.opacity !== undefined) el.style.opacity = s.opacity;
+    if (s.letter_spacing !== undefined)
+      el.style.letterSpacing = s.letter_spacing + 'px';
     if (s.font_size !== undefined) el.style.fontSize = s.font_size + 'px';
-    else el.style.fontSize = (w.font_size || config.theme.font_size || 16) + 'px';
+    else
+      el.style.fontSize = (w.font_size || config.theme.font_size || 16) + 'px';
     applyWidgetAnimation(host, w, s);
   }
 
@@ -1594,30 +1877,31 @@
     applyWidgetAnimation(host, w, null);
 
     if (w.entity || w.entity2) {
-      var stateCache  = w.entity  ? (entityStates[w.entity]  || null) : null;
-      var state2Cache = w.entity2 ? (entityStates[w.entity2] || null) : null;
+      var stateCache = w.entity ? entityStates[w.entity] || null : null;
+      var state2Cache = w.entity2 ? entityStates[w.entity2] || null : null;
 
       function doRectUpdate() {
         var ovr = resolveOverrides(w, stateCache, state2Cache) || {};
         applyRectangleFill(el, w, ovr);
         applyWidgetAnimation(host, w, ovr);
-        if (ovr.opacity      !== undefined) el.style.opacity     = ovr.opacity;
-        if (ovr.border_color !== undefined) el.style.borderColor = resolveColor(ovr.border_color);
+        if (ovr.opacity !== undefined) el.style.opacity = ovr.opacity;
+        if (ovr.border_color !== undefined)
+          el.style.borderColor = resolveColor(ovr.border_color);
         if (ovr.border_width !== undefined) {
           el.style.borderWidth = ovr.border_width + 'px';
           el.style.borderStyle = 'solid';
-          el.style.boxSizing   = 'border-box';
+          el.style.boxSizing = 'border-box';
         }
       }
 
       if (w.entity) {
-        registerEntityCallback(w.entity, function(state) {
+        registerEntityCallback(w.entity, function (state) {
           stateCache = state;
           doRectUpdate();
         });
       }
       if (w.entity2) {
-        registerEntityCallback(w.entity2, function(state) {
+        registerEntityCallback(w.entity2, function (state) {
           state2Cache = state;
           doRectUpdate();
         });
@@ -1632,23 +1916,37 @@
       el.style.cursor = 'pointer';
 
       // Tap handler
-      el.addEventListener('click', function() {
+      el.addEventListener('click', function () {
         handleAction(w.action);
         resetReturnTimer();
       });
 
       // Visual press feedback
-      el.addEventListener('mousedown',  function() { el.style.opacity = '0.75'; });
-      el.addEventListener('mouseup',    function() { el.style.opacity = '1'; });
-      el.addEventListener('mouseleave', function() { el.style.opacity = '1'; });
-      el.addEventListener('touchstart', function() { el.style.opacity = '0.75'; }, { passive: true });
-      el.addEventListener('touchend',   function() { el.style.opacity = '1'; });
+      el.addEventListener('mousedown', function () {
+        el.style.opacity = '0.75';
+      });
+      el.addEventListener('mouseup', function () {
+        el.style.opacity = '1';
+      });
+      el.addEventListener('mouseleave', function () {
+        el.style.opacity = '1';
+      });
+      el.addEventListener(
+        'touchstart',
+        function () {
+          el.style.opacity = '0.75';
+        },
+        { passive: true },
+      );
+      el.addEventListener('touchend', function () {
+        el.style.opacity = '1';
+      });
     }
   }
 
   function applyRectangleFill(el, w, ovr) {
     var rule = ovr || {};
-    var gradient = (rule.gradient !== undefined) ? rule.gradient : w.gradient;
+    var gradient = rule.gradient !== undefined ? rule.gradient : w.gradient;
     if (gradient && typeof gradient === 'object') {
       var css = resolveLinearGradient(gradient);
       if (css) {
@@ -1656,7 +1954,10 @@
         return;
       }
     }
-    var bg = (rule.background !== undefined) ? rule.background : (w.background || 'surface');
+    var bg =
+      rule.background !== undefined
+        ? rule.background
+        : w.background || 'surface';
     el.style.background = resolveColor(bg);
   }
 
@@ -1666,26 +1967,34 @@
     var radius = (w.radius !== undefined ? w.radius : 0) + 'px';
 
     // Track (background) - built into the widget, no separate rect needed
-    el.style.background   = resolveColor(w.background || 'surface2');
+    el.style.background = resolveColor(w.background || 'surface2');
     el.style.borderRadius = radius;
-    el.style.overflow     = 'hidden';
+    el.style.overflow = 'hidden';
 
     var fill = document.createElement('div');
     fill.className = 'widget-bar-fill';
     fill.style.borderRadius = radius;
-    fill.style.background   = resolveColor(w.color || 'primary');
+    fill.style.background = resolveColor(w.color || 'primary');
     el.appendChild(fill);
 
     if (w.entity || w.entity2) {
-      var stateCache  = w.entity  ? (entityStates[w.entity]  || null) : null;
-      var state2Cache = w.entity2 ? (entityStates[w.entity2] || null) : null;
+      var stateCache = w.entity ? entityStates[w.entity] || null : null;
+      var state2Cache = w.entity2 ? entityStates[w.entity2] || null : null;
 
       function doBarUpdate() {
         updateBarFromState(fill, w, stateCache, state2Cache);
       }
 
-      if (w.entity)  registerEntityCallback(w.entity,  function(s) { stateCache  = s; doBarUpdate(); });
-      if (w.entity2) registerEntityCallback(w.entity2, function(s) { state2Cache = s; doBarUpdate(); });
+      if (w.entity)
+        registerEntityCallback(w.entity, function (s) {
+          stateCache = s;
+          doBarUpdate();
+        });
+      if (w.entity2)
+        registerEntityCallback(w.entity2, function (s) {
+          state2Cache = s;
+          doBarUpdate();
+        });
 
       // Apply cached state immediately (handles page nav after WS already connected)
       if (stateCache || state2Cache) doBarUpdate();
@@ -1696,14 +2005,16 @@
     var val = state ? parseFloat(state.state) : 0;
     if (isNaN(val)) val = 0;
 
-    var max = (w.max !== undefined) ? parseFloat(w.max) : 100;
+    var max = w.max !== undefined ? parseFloat(w.max) : 100;
     if (isNaN(max) || max <= 0) max = 100;
     var pct = Math.max(0, Math.min(100, (val / max) * 100));
     fill.style.width = pct + '%';
 
-    var thresholdColor = getThresholdColor(w, val, (w.color || 'primary'));
+    var thresholdColor = getThresholdColor(w, val, w.color || 'primary');
     var ovr = resolveOverrides(w, state, state2) || {};
-    fill.style.background = resolveColor(ovr.color !== undefined ? ovr.color : thresholdColor);
+    fill.style.background = resolveColor(
+      ovr.color !== undefined ? ovr.color : thresholdColor,
+    );
   }
 
   // -- Slider --
@@ -1712,33 +2023,36 @@
   function renderSlider(el, w) {
     el.className += ' widget-slider';
 
-    var orientation = (w.orientation === 'vertical') ? 'vertical' : 'horizontal';
+    var orientation = w.orientation === 'vertical' ? 'vertical' : 'horizontal';
     if (orientation === 'vertical') el.className += ' widget-slider-vertical';
 
-    var min = (w.min !== undefined) ? parseFloat(w.min) : 0;
-    var max = (w.max !== undefined) ? parseFloat(w.max) : 100;
+    var min = w.min !== undefined ? parseFloat(w.min) : 0;
+    var max = w.max !== undefined ? parseFloat(w.max) : 100;
     if (isNaN(min)) min = 0;
     if (isNaN(max)) max = 100;
     if (max <= min) max = min + 1;
 
-    var step = (w.step !== undefined) ? parseFloat(w.step) : 1;
+    var step = w.step !== undefined ? parseFloat(w.step) : 1;
     if (isNaN(step) || step <= 0) step = 1;
 
-    var updateMode = (w.update_mode === 'drag') ? 'drag' : 'release';
-    var valueAttr  = w.value_attribute;
-    var minAttr    = w.min_attribute;
-    var maxAttr    = w.max_attribute;
-    var baseMin    = min;
-    var baseMax    = max;
+    var updateMode = w.update_mode === 'drag' ? 'drag' : 'release';
+    var valueAttr = w.value_attribute;
+    var minAttr = w.min_attribute;
+    var maxAttr = w.max_attribute;
+    var baseMin = min;
+    var baseMax = max;
     var currentValue = min;
     var isDragging = false;
     var sliderLocked = !!w.locked;
     var lastSentValue = null;
     var latestState = null;
 
-    var crossSize = (orientation === 'vertical') ? w.w : w.h;
-    var radius = (w.radius !== undefined) ? w.radius : Math.round(crossSize / 2);
-    var thumbSize = (w.thumb_size !== undefined) ? parseFloat(w.thumb_size) : Math.max(14, Math.round(crossSize * 0.9));
+    var crossSize = orientation === 'vertical' ? w.w : w.h;
+    var radius = w.radius !== undefined ? w.radius : Math.round(crossSize / 2);
+    var thumbSize =
+      w.thumb_size !== undefined
+        ? parseFloat(w.thumb_size)
+        : Math.max(14, Math.round(crossSize * 0.9));
     if (isNaN(thumbSize) || thumbSize < 8) thumbSize = 8;
 
     // Keep the thumb free to extend outside widget bounds when thumb_size is large.
@@ -1767,7 +2081,7 @@
 
     var thumb = document.createElement('div');
     thumb.className = 'widget-slider-thumb';
-    thumb.style.width  = thumbSize + 'px';
+    thumb.style.width = thumbSize + 'px';
     thumb.style.height = thumbSize + 'px';
     thumb.style.borderRadius = Math.round(thumbSize / 2) + 'px';
     thumb.style.background = resolveColor(w.thumb_color || 'text');
@@ -1827,10 +2141,16 @@
 
     function applySliderStyle(state) {
       var ovr = resolveOverrides(w, state) || {};
-      var bg = (ovr.background !== undefined) ? ovr.background : (w.background || 'surface2');
-      var fg = (ovr.color !== undefined) ? ovr.color : (w.color || 'primary');
-      var th = (ovr.thumb_color !== undefined) ? ovr.thumb_color : (w.thumb_color || 'text');
-      sliderLocked = (ovr.locked !== undefined) ? !!ovr.locked : !!w.locked;
+      var bg =
+        ovr.background !== undefined
+          ? ovr.background
+          : w.background || 'surface2';
+      var fg = ovr.color !== undefined ? ovr.color : w.color || 'primary';
+      var th =
+        ovr.thumb_color !== undefined
+          ? ovr.thumb_color
+          : w.thumb_color || 'text';
+      sliderLocked = ovr.locked !== undefined ? !!ovr.locked : !!w.locked;
       track.style.background = resolveColor(bg);
       fill.style.background = resolveColor(fg);
       thumb.style.background = resolveColor(th);
@@ -1881,7 +2201,10 @@
         return { x: evt.touches[0].clientX, y: evt.touches[0].clientY };
       }
       if (evt.changedTouches && evt.changedTouches.length) {
-        return { x: evt.changedTouches[0].clientX, y: evt.changedTouches[0].clientY };
+        return {
+          x: evt.changedTouches[0].clientX,
+          y: evt.changedTouches[0].clientY,
+        };
       }
       return { x: evt.clientX, y: evt.clientY };
     }
@@ -1892,7 +2215,7 @@
       var ratio;
 
       if (orientation === 'vertical') {
-        ratio = 1 - ((p.y - rect.top) / rect.height);
+        ratio = 1 - (p.y - rect.top) / rect.height;
       } else {
         ratio = (p.x - rect.left) / rect.width;
       }
@@ -1976,7 +2299,12 @@
     function readValueFromState(state) {
       if (!state) return null;
       var raw;
-      if (valueAttr && state.attributes && state.attributes[valueAttr] !== undefined && state.attributes[valueAttr] !== null) {
+      if (
+        valueAttr &&
+        state.attributes &&
+        state.attributes[valueAttr] !== undefined &&
+        state.attributes[valueAttr] !== null
+      ) {
         raw = state.attributes[valueAttr];
       } else {
         raw = state.state;
@@ -1990,7 +2318,11 @@
       if (w.live_progress === false) return false;
       if (valueAttr !== 'media_position') return false;
       if (!state || !state.attributes) return false;
-      if (state.attributes.media_position === undefined || state.attributes.media_position === null) return false;
+      if (
+        state.attributes.media_position === undefined ||
+        state.attributes.media_position === null
+      )
+        return false;
       return true;
     }
 
@@ -2002,7 +2334,10 @@
 
       var st = String(state.state || '').toLowerCase();
       if (st === 'playing') {
-        var ts = attrs.media_position_updated_at || state.last_updated || state.last_changed;
+        var ts =
+          attrs.media_position_updated_at ||
+          state.last_updated ||
+          state.last_changed;
         var baseMs = Date.parse(ts);
         if (isNaN(baseMs)) baseMs = Date.now();
         pos += Math.max(0, (Date.now() - baseMs) / 1000);
@@ -2024,7 +2359,7 @@
     }
 
     if (w.entity) {
-      registerEntityCallback(w.entity, function(state) {
+      registerEntityCallback(w.entity, function (state) {
         if (isDragging) return;
         latestState = state;
         updateDynamicBounds(state);
@@ -2046,7 +2381,11 @@
     applySliderVisual(currentValue, initialState);
 
     // Smooth playback progress between HA state_changed events for media players.
-    if (w.entity && valueAttr === 'media_position' && w.live_progress !== false) {
+    if (
+      w.entity &&
+      valueAttr === 'media_position' &&
+      w.live_progress !== false
+    ) {
       var liveTimer = setInterval(tickLiveProgress, 1000);
       activePageTimers.push({ id: liveTimer });
     }
@@ -2078,20 +2417,29 @@
     var latestState = null;
     var currentKnown = false;
     var currentIsOn = false;
-    var hasRequiredValues = !(w.on_value === undefined || w.off_value === undefined);
+    var hasRequiredValues = !(
+      w.on_value === undefined || w.off_value === undefined
+    );
 
     function normalizeSwitchIcon(icon) {
       if (icon === undefined || icon === null) return '';
       var str = String(icon);
       if (!str) return '';
-      if (str.indexOf('[mdi:') === 0 || str.indexOf('[small:') === 0) return str;
-      if (/^mdi:[\w-]+$/i.test(str)) return '[mdi:' + str.replace(/^mdi:/i, '') + ']';
+      if (str.indexOf('[mdi:') === 0 || str.indexOf('[small:') === 0)
+        return str;
+      if (/^mdi:[\w-]+$/i.test(str))
+        return '[mdi:' + str.replace(/^mdi:/i, '') + ']';
       return str;
     }
 
     function readSwitchValue(state, attrName) {
       if (!state) return null;
-      if (attrName && state.attributes && state.attributes[attrName] !== undefined && state.attributes[attrName] !== null) {
+      if (
+        attrName &&
+        state.attributes &&
+        state.attributes[attrName] !== undefined &&
+        state.attributes[attrName] !== null
+      ) {
         return state.attributes[attrName];
       }
       if (state.state === undefined || state.state === null) return null;
@@ -2101,29 +2449,61 @@
     function resolveSwitchConfig(state) {
       var ovr = resolveOverrides(w, state) || {};
       var out = {
-        on_value: (ovr.on_value !== undefined) ? ovr.on_value : w.on_value,
-        off_value: (ovr.off_value !== undefined) ? ovr.off_value : w.off_value,
-        value_attribute: (ovr.value_attribute !== undefined) ? ovr.value_attribute : w.value_attribute,
-        color: (ovr.color !== undefined) ? ovr.color : (w.color !== undefined ? w.color : 'surface2'),
-        thumb_color: (ovr.thumb_color !== undefined) ? ovr.thumb_color : (w.thumb_color !== undefined ? w.thumb_color : 'text'),
-        icon: (ovr.icon !== undefined) ? ovr.icon : (w.icon !== undefined ? w.icon : ''),
-        icon_color: (ovr.icon_color !== undefined) ? ovr.icon_color : (w.icon_color !== undefined ? w.icon_color : 'text_muted'),
-        icon_scale: (ovr.icon_scale !== undefined) ? ovr.icon_scale : w.icon_scale,
-        label_size: (ovr.label_size !== undefined) ? ovr.label_size : w.label_size,
-        radius: (ovr.radius !== undefined) ? ovr.radius : w.radius,
-        thumb_radius: (ovr.thumb_radius !== undefined) ? ovr.thumb_radius : w.thumb_radius,
-        padding: (ovr.padding !== undefined) ? ovr.padding : w.padding,
-        label: (ovr.label !== undefined) ? ovr.label : w.label,
-        label_color: (ovr.label_color !== undefined) ? ovr.label_color : (w.label_color !== undefined ? w.label_color : 'text_muted'),
-        opacity: (ovr.opacity !== undefined) ? ovr.opacity : w.opacity,
-        locked: (ovr.locked !== undefined) ? !!ovr.locked : !!w.locked
+        on_value: ovr.on_value !== undefined ? ovr.on_value : w.on_value,
+        off_value: ovr.off_value !== undefined ? ovr.off_value : w.off_value,
+        value_attribute:
+          ovr.value_attribute !== undefined
+            ? ovr.value_attribute
+            : w.value_attribute,
+        color:
+          ovr.color !== undefined
+            ? ovr.color
+            : w.color !== undefined
+              ? w.color
+              : 'surface2',
+        thumb_color:
+          ovr.thumb_color !== undefined
+            ? ovr.thumb_color
+            : w.thumb_color !== undefined
+              ? w.thumb_color
+              : 'text',
+        icon:
+          ovr.icon !== undefined
+            ? ovr.icon
+            : w.icon !== undefined
+              ? w.icon
+              : '',
+        icon_color:
+          ovr.icon_color !== undefined
+            ? ovr.icon_color
+            : w.icon_color !== undefined
+              ? w.icon_color
+              : 'text_muted',
+        icon_scale:
+          ovr.icon_scale !== undefined ? ovr.icon_scale : w.icon_scale,
+        label_size:
+          ovr.label_size !== undefined ? ovr.label_size : w.label_size,
+        radius: ovr.radius !== undefined ? ovr.radius : w.radius,
+        thumb_radius:
+          ovr.thumb_radius !== undefined ? ovr.thumb_radius : w.thumb_radius,
+        padding: ovr.padding !== undefined ? ovr.padding : w.padding,
+        label: ovr.label !== undefined ? ovr.label : w.label,
+        label_color:
+          ovr.label_color !== undefined
+            ? ovr.label_color
+            : w.label_color !== undefined
+              ? w.label_color
+              : 'text_muted',
+        opacity: ovr.opacity !== undefined ? ovr.opacity : w.opacity,
+        locked: ovr.locked !== undefined ? !!ovr.locked : !!w.locked,
       };
       return out;
     }
 
     function evaluateSwitchState(state, cfg) {
       var raw = readSwitchValue(state, cfg.value_attribute);
-      if (raw === null || raw === undefined) return { known: false, isOn: false, raw: raw };
+      if (raw === null || raw === undefined)
+        return { known: false, isOn: false, raw: raw };
       var rawStr = String(raw);
       var onStr = String(cfg.on_value);
       var offStr = String(cfg.off_value);
@@ -2143,14 +2523,15 @@
       var radius = parseFloat(cfg.radius);
       if (isNaN(radius)) radius = Math.round(height / 2);
 
-      var thumbSize = height - (pad * 2);
-      var maxThumb = Math.max(8, width - (pad * 2));
+      var thumbSize = height - pad * 2;
+      var maxThumb = Math.max(8, width - pad * 2);
       if (thumbSize > maxThumb) thumbSize = maxThumb;
       if (thumbSize < 8) thumbSize = 8;
-      var travel = Math.max(0, width - (pad * 2) - thumbSize);
+      var travel = Math.max(0, width - pad * 2 - thumbSize);
       var thumbLeft = pad + (isOn ? travel : 0);
 
-      var iconScale = (cfg.icon_scale !== undefined) ? parseFloat(cfg.icon_scale) : 1;
+      var iconScale =
+        cfg.icon_scale !== undefined ? parseFloat(cfg.icon_scale) : 1;
       if (isNaN(iconScale) || iconScale <= 0) iconScale = 1;
       if (iconScale > 2) iconScale = 2;
       var iconSize = Math.round(thumbSize * 0.52 * iconScale);
@@ -2167,7 +2548,10 @@
       thumb.style.height = thumbSize + 'px';
       thumb.style.left = thumbLeft + 'px';
       thumb.style.top = pad + 'px';
-      var thumbRadius = cfg.thumb_radius !== undefined ? parseFloat(cfg.thumb_radius) : Math.round(thumbSize / 2);
+      var thumbRadius =
+        cfg.thumb_radius !== undefined
+          ? parseFloat(cfg.thumb_radius)
+          : Math.round(thumbSize / 2);
       if (isNaN(thumbRadius)) thumbRadius = Math.round(thumbSize / 2);
       if (thumbRadius < 0) thumbRadius = 0;
       thumb.style.borderRadius = thumbRadius + 'px';
@@ -2185,9 +2569,13 @@
         thumbIcon.textContent = '';
       }
 
-      var labelText = (cfg.label !== undefined && cfg.label !== null) ? String(cfg.label) : '';
+      var labelText =
+        cfg.label !== undefined && cfg.label !== null ? String(cfg.label) : '';
       if (labelText) {
-        var labelSize = cfg.label_size !== undefined ? parseFloat(cfg.label_size) : Math.round(height * 0.34);
+        var labelSize =
+          cfg.label_size !== undefined
+            ? parseFloat(cfg.label_size)
+            : Math.round(height * 0.34);
         if (isNaN(labelSize) || labelSize < 9) labelSize = 9;
         labelEl.style.display = 'flex';
         labelEl.style.fontSize = labelSize + 'px';
@@ -2197,13 +2585,13 @@
         if (isOn) {
           labelEl.style.justifyContent = 'flex-start';
           labelEl.style.textAlign = 'left';
-          labelEl.style.paddingLeft = (pad + 8) + 'px';
-          labelEl.style.paddingRight = (pad + thumbSize + 4) + 'px';
+          labelEl.style.paddingLeft = pad + 8 + 'px';
+          labelEl.style.paddingRight = pad + thumbSize + 4 + 'px';
         } else {
           labelEl.style.justifyContent = 'flex-end';
           labelEl.style.textAlign = 'right';
-          labelEl.style.paddingLeft = (pad + thumbSize + 4) + 'px';
-          labelEl.style.paddingRight = (pad + 8) + 'px';
+          labelEl.style.paddingLeft = pad + thumbSize + 4 + 'px';
+          labelEl.style.paddingRight = pad + 8 + 'px';
         }
         setContent(labelEl, applyTemplate(labelText, state));
       } else {
@@ -2225,7 +2613,8 @@
     function renderMissingConfig() {
       el.style.background = 'rgba(217,83,79,0.14)';
       el.style.border = '1px solid ' + resolveColor('danger');
-      el.style.borderRadius = (w.radius !== undefined ? w.radius : Math.round(w.h / 2)) + 'px';
+      el.style.borderRadius =
+        (w.radius !== undefined ? w.radius : Math.round(w.h / 2)) + 'px';
       track.style.display = 'none';
       thumb.style.display = 'none';
       labelEl.style.display = 'block';
@@ -2248,7 +2637,11 @@
 
     function getDefaultAction() {
       if (!w.entity) return null;
-      return { type: 'service', service: 'homeassistant.toggle', entity_id: w.entity };
+      return {
+        type: 'service',
+        service: 'homeassistant.toggle',
+        entity_id: w.entity,
+      };
     }
 
     function onSwitchTap() {
@@ -2267,9 +2660,9 @@
       }
 
       handleAction(action, nextValue, {
-        '$on_value': cfg.on_value,
-        '$off_value': cfg.off_value,
-        '$is_on': nextIsOn ? 'true' : 'false'
+        $on_value: cfg.on_value,
+        $off_value: cfg.off_value,
+        $is_on: nextIsOn ? 'true' : 'false',
       });
       resetReturnTimer();
     }
@@ -2283,7 +2676,7 @@
     applySwitchVisual(false, false, initialCfg, null);
 
     if (w.entity) {
-      registerEntityCallback(w.entity, function(state) {
+      registerEntityCallback(w.entity, function (state) {
         latestState = state;
         applyFromState(state);
       });
@@ -2297,29 +2690,33 @@
     if (w.action || w.entity) {
       el.style.cursor = 'pointer';
       el.addEventListener('click', onSwitchTap);
-      el.addEventListener('mousedown', function() {
+      el.addEventListener('mousedown', function () {
         var cfg = resolveSwitchConfig(latestState);
         if (cfg.locked) return;
         el.style.opacity = '0.82';
       });
-      el.addEventListener('mouseup', function() {
+      el.addEventListener('mouseup', function () {
         var cfg = resolveSwitchConfig(latestState);
         if (cfg.opacity !== undefined) el.style.opacity = cfg.opacity;
         else if (w.opacity !== undefined) el.style.opacity = w.opacity;
         else el.style.opacity = '1';
       });
-      el.addEventListener('mouseleave', function() {
+      el.addEventListener('mouseleave', function () {
         var cfg = resolveSwitchConfig(latestState);
         if (cfg.opacity !== undefined) el.style.opacity = cfg.opacity;
         else if (w.opacity !== undefined) el.style.opacity = w.opacity;
         else el.style.opacity = '1';
       });
-      el.addEventListener('touchstart', function() {
-        var cfg = resolveSwitchConfig(latestState);
-        if (cfg.locked) return;
-        el.style.opacity = '0.82';
-      }, { passive: true });
-      el.addEventListener('touchend', function() {
+      el.addEventListener(
+        'touchstart',
+        function () {
+          var cfg = resolveSwitchConfig(latestState);
+          if (cfg.locked) return;
+          el.style.opacity = '0.82';
+        },
+        { passive: true },
+      );
+      el.addEventListener('touchend', function () {
         var cfg = resolveSwitchConfig(latestState);
         if (cfg.opacity !== undefined) el.style.opacity = cfg.opacity;
         else if (w.opacity !== undefined) el.style.opacity = w.opacity;
@@ -2361,26 +2758,38 @@
 
     function normalizeSceneOptions(raw) {
       var out = [];
-      if (!raw || Object.prototype.toString.call(raw) !== '[object Array]') return out;
+      if (!raw || Object.prototype.toString.call(raw) !== '[object Array]')
+        return out;
       for (var i = 0; i < raw.length; i++) {
         var it = raw[i];
         if (it === null || it === undefined) continue;
-        if (typeof it === 'string' || typeof it === 'number' || typeof it === 'boolean') {
+        if (
+          typeof it === 'string' ||
+          typeof it === 'number' ||
+          typeof it === 'boolean'
+        ) {
           out.push({ value: String(it), label: String(it), icon: '' });
           continue;
         }
         if (typeof it === 'object') {
-          var v = (it.value !== undefined && it.value !== null) ? String(it.value) : '';
+          var v =
+            it.value !== undefined && it.value !== null ? String(it.value) : '';
           if (!v && it.value !== false && it.value !== 0) continue;
           out.push({
             value: v,
             raw_value: it.value,
-            label: (it.label !== undefined && it.label !== null) ? String(it.label) : (it.icon ? null : v),
-            icon: (it.icon !== undefined && it.icon !== null) ? String(it.icon) : '',
+            label:
+              it.label !== undefined && it.label !== null
+                ? String(it.label)
+                : it.icon
+                  ? null
+                  : v,
+            icon:
+              it.icon !== undefined && it.icon !== null ? String(it.icon) : '',
             selected_background: it.selected_background || null,
-            selected_color:      it.selected_color      || null,
-            option_background:   it.option_background   || null,
-            option_color:        it.option_color        || null
+            selected_color: it.selected_color || null,
+            option_background: it.option_background || null,
+            option_color: it.option_color || null,
           });
         }
       }
@@ -2390,7 +2799,12 @@
     function readSceneValue(state) {
       if (!state) return null;
       var raw;
-      if (valueAttr && state.attributes && state.attributes[valueAttr] !== undefined && state.attributes[valueAttr] !== null) {
+      if (
+        valueAttr &&
+        state.attributes &&
+        state.attributes[valueAttr] !== undefined &&
+        state.attributes[valueAttr] !== null
+      ) {
         raw = state.attributes[valueAttr];
       } else {
         raw = state.state;
@@ -2417,11 +2831,18 @@
     function applySceneStyle() {
       var state = w.entity ? entityStates[w.entity] : null;
       activeSceneOverride = resolveOverrides(w, state) || {};
-      var bg = (activeSceneOverride.background !== undefined) ? activeSceneOverride.background : (w.background || 'transparent');
-      sceneLocked = (activeSceneOverride.locked !== undefined) ? !!activeSceneOverride.locked : !!w.locked;
+      var bg =
+        activeSceneOverride.background !== undefined
+          ? activeSceneOverride.background
+          : w.background || 'transparent';
+      sceneLocked =
+        activeSceneOverride.locked !== undefined
+          ? !!activeSceneOverride.locked
+          : !!w.locked;
       el.style.background = resolveColor(bg);
       el.style.cursor = sceneLocked ? 'not-allowed' : 'default';
-      if (activeSceneOverride.opacity !== undefined) el.style.opacity = activeSceneOverride.opacity;
+      if (activeSceneOverride.opacity !== undefined)
+        el.style.opacity = activeSceneOverride.opacity;
       else if (w.opacity !== undefined) el.style.opacity = w.opacity;
     }
 
@@ -2430,16 +2851,32 @@
       // Priority: per-option → override → widget default → hardcoded fallback
       var activeBg = resolveColor(
         (opt && opt.selected_background) ||
-        (ovr.selected_background !== undefined ? ovr.selected_background : w.selected_background) || 'primary');
+          (ovr.selected_background !== undefined
+            ? ovr.selected_background
+            : w.selected_background) ||
+          'primary',
+      );
       var activeFg = resolveColor(
         (opt && opt.selected_color) ||
-        (ovr.selected_color !== undefined ? ovr.selected_color : w.selected_color) || 'background');
+          (ovr.selected_color !== undefined
+            ? ovr.selected_color
+            : w.selected_color) ||
+          'background',
+      );
       var bg = resolveColor(
         (opt && opt.option_background) ||
-        (ovr.option_background !== undefined ? ovr.option_background : w.option_background) || 'surface2');
+          (ovr.option_background !== undefined
+            ? ovr.option_background
+            : w.option_background) ||
+          'surface2',
+      );
       var fg = resolveColor(
         (opt && opt.option_color) ||
-        (ovr.option_color !== undefined ? ovr.option_color : w.option_color) || 'text');
+          (ovr.option_color !== undefined
+            ? ovr.option_color
+            : w.option_color) ||
+          'text',
+      );
       button.style.background = isActive ? activeBg : bg;
       button.style.color = isActive ? activeFg : fg;
     }
@@ -2449,12 +2886,19 @@
       for (var i = 0; i < controls.length; i++) {
         var c = controls[i];
         if (c.kind === 'button') {
-          optionVisual(c.el, String(c.option.value) === String(currentValue), c.option);
+          optionVisual(
+            c.el,
+            String(c.option.value) === String(currentValue),
+            c.option,
+          );
           c.el.disabled = sceneLocked;
           c.el.style.cursor = sceneLocked ? 'not-allowed' : 'pointer';
           c.el.style.opacity = sceneLocked ? '0.6' : '1';
         } else if (c.kind === 'select') {
-          c.el.value = currentValue !== null && currentValue !== undefined ? String(currentValue) : '';
+          c.el.value =
+            currentValue !== null && currentValue !== undefined
+              ? String(currentValue)
+              : '';
           c.el.disabled = sceneLocked;
           c.el.style.cursor = sceneLocked ? 'not-allowed' : 'pointer';
           c.el.style.opacity = sceneLocked ? '0.65' : '1';
@@ -2468,7 +2912,10 @@
         } else {
           pickerIconEl.style.display = 'none';
         }
-        setContent(pickerLabelEl, opt ? (opt.label || '') : (w.placeholder || 'Select'));
+        setContent(
+          pickerLabelEl,
+          opt ? opt.label || '' : w.placeholder || 'Select',
+        );
         pickerButton.disabled = sceneLocked;
         pickerButton.style.cursor = sceneLocked ? 'not-allowed' : 'pointer';
         pickerButton.style.opacity = sceneLocked ? '0.65' : '1';
@@ -2481,8 +2928,11 @@
       if (w.action) {
         // Use raw_value to preserve original type (boolean, number) for service calls.
         var optObj = findOptionByValue(value);
-        var rawToken = (optObj && optObj.raw_value !== undefined) ? optObj.raw_value : selected;
-        handleAction(w.action, undefined, { '$option': rawToken });
+        var rawToken =
+          optObj && optObj.raw_value !== undefined
+            ? optObj.raw_value
+            : selected;
+        handleAction(w.action, undefined, { $option: rawToken });
       }
       currentValue = selected;
       updateControls();
@@ -2509,12 +2959,16 @@
       el.appendChild(wrap);
 
       for (var i = 0; i < options.length; i++) {
-        (function(opt) {
+        (function (opt) {
           var b = document.createElement('button');
           b.type = 'button';
           b.style.border = 'none';
-          b.style.borderRadius = (w.option_radius !== undefined ? w.option_radius : 18) + 'px';
-          b.style.padding = '0 ' + (w.option_padding_x !== undefined ? w.option_padding_x : 12) + 'px';
+          b.style.borderRadius =
+            (w.option_radius !== undefined ? w.option_radius : 18) + 'px';
+          b.style.padding =
+            '0 ' +
+            (w.option_padding_x !== undefined ? w.option_padding_x : 12) +
+            'px';
           b.style.margin = btnMargin + 'px';
           b.style.height = btnHeight + 'px';
           b.style.boxSizing = 'border-box';
@@ -2522,39 +2976,52 @@
           b.style.fontFamily = 'inherit';
 
           var base = w.h;
-          var hasIcon  = !!opt.icon;
+          var hasIcon = !!opt.icon;
           var hasLabel = !!opt.label;
-          var iconSize  = w.icon_size  !== undefined ? w.icon_size
-            : (hasIcon && hasLabel ? Math.round(base * 0.42) : Math.round(base * 0.60));
-          var labelSize = w.label_size !== undefined ? w.label_size
-            : (hasIcon && hasLabel ? Math.round(base * 0.14) : Math.round(base * 0.20));
+          var iconSize =
+            w.icon_size !== undefined
+              ? w.icon_size
+              : hasIcon && hasLabel
+                ? Math.round(base * 0.42)
+                : Math.round(base * 0.6);
+          var labelSize =
+            w.label_size !== undefined
+              ? w.label_size
+              : hasIcon && hasLabel
+                ? Math.round(base * 0.14)
+                : Math.round(base * 0.2);
 
           if (opt.icon && opt.label) {
             // Separate icon + label elements stacked vertically
-            b.style.display        = 'flex';
-            b.style.flexDirection  = 'column';
-            b.style.alignItems     = 'center';
+            b.style.display = 'flex';
+            b.style.flexDirection = 'column';
+            b.style.alignItems = 'center';
             b.style.justifyContent = 'center';
-            b.style.gap            = (w.option_icon_label_gap !== undefined ? w.option_icon_label_gap : 3) + 'px';
+            b.style.gap =
+              (w.option_icon_label_gap !== undefined
+                ? w.option_icon_label_gap
+                : 3) + 'px';
             var iconSpan = document.createElement('span');
             setContent(iconSpan, opt.icon);
-            iconSpan.style.fontSize   = iconSize + 'px';
+            iconSpan.style.fontSize = iconSize + 'px';
             iconSpan.style.lineHeight = '1';
             b.appendChild(iconSpan);
             var labelSpan = document.createElement('span');
             setContent(labelSpan, opt.label);
-            labelSpan.style.fontSize   = labelSize + 'px';
+            labelSpan.style.fontSize = labelSize + 'px';
             labelSpan.style.lineHeight = '1.2';
             b.appendChild(labelSpan);
           } else {
-            b.style.display        = 'flex';
-            b.style.alignItems     = 'center';
+            b.style.display = 'flex';
+            b.style.alignItems = 'center';
             b.style.justifyContent = 'center';
             b.style.fontSize = (opt.icon ? iconSize : labelSize) + 'px';
             setContent(b, optionText(opt));
           }
 
-          b.addEventListener('click', function() { selectOption(opt.value); });
+          b.addEventListener('click', function () {
+            selectOption(opt.value);
+          });
           wrap.appendChild(b);
           controls.push({ kind: 'button', el: b, option: opt });
         })(options[i]);
@@ -2566,13 +3033,19 @@
       select.style.position = 'absolute';
       select.style.left = (w.padding !== undefined ? w.padding : 6) + 'px';
       select.style.top = (w.padding !== undefined ? w.padding : 6) + 'px';
-      select.style.width = Math.max(10, w.w - 2 * (w.padding !== undefined ? w.padding : 6)) + 'px';
-      select.style.height = Math.max(10, w.h - 2 * (w.padding !== undefined ? w.padding : 6)) + 'px';
+      select.style.width =
+        Math.max(10, w.w - 2 * (w.padding !== undefined ? w.padding : 6)) +
+        'px';
+      select.style.height =
+        Math.max(10, w.h - 2 * (w.padding !== undefined ? w.padding : 6)) +
+        'px';
       select.style.border = 'none';
-      select.style.borderRadius = (w.option_radius !== undefined ? w.option_radius : 8) + 'px';
+      select.style.borderRadius =
+        (w.option_radius !== undefined ? w.option_radius : 8) + 'px';
       select.style.background = resolveColor(w.option_background || 'surface2');
       select.style.color = resolveColor(w.option_color || 'text');
-      select.style.fontSize = (w.label_size !== undefined ? w.label_size : 16) + 'px';
+      select.style.fontSize =
+        (w.label_size !== undefined ? w.label_size : 16) + 'px';
       select.style.padding = '0 8px';
       select.style.fontFamily = 'inherit';
       for (var i = 0; i < options.length; i++) {
@@ -2581,7 +3054,9 @@
         opt.textContent = options[i].label;
         select.appendChild(opt);
       }
-      select.addEventListener('change', function() { selectOption(select.value); });
+      select.addEventListener('change', function () {
+        selectOption(select.value);
+      });
       el.appendChild(select);
       controls.push({ kind: 'select', el: select });
     }
@@ -2590,40 +3065,55 @@
       var pad = w.padding !== undefined ? w.padding : 0;
       pickerButton = document.createElement('button');
       pickerButton.type = 'button';
-      pickerButton.style.position        = 'absolute';
-      pickerButton.style.left            = pad + 'px';
-      pickerButton.style.top             = pad + 'px';
-      pickerButton.style.width           = Math.max(10, w.w - 2 * pad) + 'px';
-      pickerButton.style.height          = Math.max(10, w.h - 2 * pad) + 'px';
-      pickerButton.style.border          = 'none';
-      pickerButton.style.padding         = '0';
-      pickerButton.style.borderRadius    = (w.radius !== undefined ? w.radius : (w.option_radius !== undefined ? w.option_radius : 8)) + 'px';
-      pickerButton.style.background      = resolveColor(w.background || w.option_background || 'surface2');
-      pickerButton.style.cursor          = 'pointer';
-      pickerButton.style.fontFamily      = 'inherit';
-      pickerButton.style.display         = 'flex';
-      pickerButton.style.flexDirection   = 'column';
-      pickerButton.style.alignItems      = 'center';
-      pickerButton.style.justifyContent  = 'center';
-      pickerButton.style.gap             = (w.gap !== undefined ? w.gap : 4) + 'px';
+      pickerButton.style.position = 'absolute';
+      pickerButton.style.left = pad + 'px';
+      pickerButton.style.top = pad + 'px';
+      pickerButton.style.width = Math.max(10, w.w - 2 * pad) + 'px';
+      pickerButton.style.height = Math.max(10, w.h - 2 * pad) + 'px';
+      pickerButton.style.border = 'none';
+      pickerButton.style.padding = '0';
+      pickerButton.style.borderRadius =
+        (w.radius !== undefined
+          ? w.radius
+          : w.option_radius !== undefined
+            ? w.option_radius
+            : 8) + 'px';
+      pickerButton.style.background = resolveColor(
+        w.background || w.option_background || 'surface2',
+      );
+      pickerButton.style.cursor = 'pointer';
+      pickerButton.style.fontFamily = 'inherit';
+      pickerButton.style.display = 'flex';
+      pickerButton.style.flexDirection = 'column';
+      pickerButton.style.alignItems = 'center';
+      pickerButton.style.justifyContent = 'center';
+      pickerButton.style.gap = (w.gap !== undefined ? w.gap : 4) + 'px';
 
       var base = Math.min(w.w - 2 * pad, w.h - 2 * pad);
-      var iconSize  = w.icon_size  !== undefined ? w.icon_size  : Math.round(base * 0.42);
-      var labelSize = w.label_size !== undefined ? w.label_size : Math.round(base * 0.14);
+      var iconSize =
+        w.icon_size !== undefined ? w.icon_size : Math.round(base * 0.42);
+      var labelSize =
+        w.label_size !== undefined ? w.label_size : Math.round(base * 0.14);
 
       pickerIconEl = document.createElement('div');
-      pickerIconEl.style.fontSize   = iconSize + 'px';
+      pickerIconEl.style.fontSize = iconSize + 'px';
       pickerIconEl.style.lineHeight = '1';
-      pickerIconEl.style.color      = resolveColor(w.icon_color || w.option_color || 'text');
+      pickerIconEl.style.color = resolveColor(
+        w.icon_color || w.option_color || 'text',
+      );
 
       pickerLabelEl = document.createElement('div');
-      pickerLabelEl.style.fontSize   = labelSize + 'px';
+      pickerLabelEl.style.fontSize = labelSize + 'px';
       pickerLabelEl.style.lineHeight = '1.2';
-      pickerLabelEl.style.color      = resolveColor(w.label_color || w.option_color || 'text_dim');
+      pickerLabelEl.style.color = resolveColor(
+        w.label_color || w.option_color || 'text_dim',
+      );
 
       pickerButton.appendChild(pickerIconEl);
       pickerButton.appendChild(pickerLabelEl);
-      pickerButton.addEventListener('click', function() { openPickerModal(); });
+      pickerButton.addEventListener('click', function () {
+        openPickerModal();
+      });
       el.appendChild(pickerButton);
     }
 
@@ -2645,27 +3135,33 @@
       var card = document.createElement('div');
       card.style.minWidth = '220px';
       card.style.maxWidth = '70vw';
-      card.style.background = resolveColor(w.option_panel_background || 'surface');
-      card.style.borderRadius = (w.option_panel_radius !== undefined ? w.option_panel_radius : 12) + 'px';
+      card.style.background = resolveColor(
+        w.option_panel_background || 'surface',
+      );
+      card.style.borderRadius =
+        (w.option_panel_radius !== undefined ? w.option_panel_radius : 12) +
+        'px';
       card.style.padding = '10px';
       card.style.boxShadow = '0 8px 24px rgba(0,0,0,0.35)';
       overlay.appendChild(card);
 
       for (var i = 0; i < options.length; i++) {
-        (function(opt) {
+        (function (opt) {
           var item = document.createElement('button');
           item.type = 'button';
           item.style.width = '100%';
           item.style.border = 'none';
-          item.style.borderRadius = (w.option_radius !== undefined ? w.option_radius : 10) + 'px';
+          item.style.borderRadius =
+            (w.option_radius !== undefined ? w.option_radius : 10) + 'px';
           item.style.padding = '10px 12px';
           item.style.marginBottom = '6px';
-          item.style.fontSize = (w.label_size !== undefined ? w.label_size : 15) + 'px';
+          item.style.fontSize =
+            (w.label_size !== undefined ? w.label_size : 15) + 'px';
           item.style.cursor = 'pointer';
           item.style.fontFamily = 'inherit';
           setContent(item, optionText(opt));
           optionVisual(item, String(opt.value) === String(currentValue), opt);
-          item.addEventListener('click', function() {
+          item.addEventListener('click', function () {
             selectOption(opt.value);
             closePickerModal();
           });
@@ -2680,7 +3176,7 @@
         pickerClose = null;
       }
 
-      overlay.addEventListener('click', function(e) {
+      overlay.addEventListener('click', function (e) {
         if (e.target === overlay) closePickerModal();
       });
       pickerClose = closePickerModal;
@@ -2705,7 +3201,7 @@
     else buildButtons();
 
     if (w.entity) {
-      registerEntityCallback(w.entity, function(state) {
+      registerEntityCallback(w.entity, function (state) {
         currentValue = readSceneValue(state);
         updateControls();
       });
@@ -2735,31 +3231,34 @@
 
       if (t.below !== undefined) {
         var below = parseFloat(t.below);
-        if (!isNaN(below) && rawValue < below && t.color !== undefined) return t.color;
+        if (!isNaN(below) && rawValue < below && t.color !== undefined)
+          return t.color;
         continue;
       }
 
       if (t.above !== undefined) {
         var above = parseFloat(t.above);
-        if (!isNaN(above) && rawValue > above && t.color !== undefined) return t.color;
+        if (!isNaN(above) && rawValue > above && t.color !== undefined)
+          return t.color;
         continue;
       }
 
       if (t.equals !== undefined) {
-        if (String(rawValue) === String(t.equals) && t.color !== undefined) return t.color;
+        if (String(rawValue) === String(t.equals) && t.color !== undefined)
+          return t.color;
       }
     }
-    return (defaultColor !== undefined) ? defaultColor : fallbackColor;
+    return defaultColor !== undefined ? defaultColor : fallbackColor;
   }
 
   // -- Button --
   function renderButton(el, w) {
     el.className += ' widget-button';
 
-    var iconEl  = document.createElement('div');
+    var iconEl = document.createElement('div');
     var labelEl = document.createElement('div');
     var buttonLocked = !!w.locked;
-    iconEl.className  = 'btn-icon';
+    iconEl.className = 'btn-icon';
     labelEl.className = 'btn-label';
 
     if (w.radius !== undefined) {
@@ -2774,9 +3273,14 @@
     }
 
     var hasIcon = !!(w.icon || w.icon_off || w.icon_on);
-    var hasLabel = (w.label !== undefined && w.label !== null && String(w.label).length > 0);
-    var baseIcon = (w.icon !== undefined && w.icon !== null) ? w.icon
-      : ((w.icon_off !== undefined && w.icon_off !== null) ? w.icon_off : w.icon_on);
+    var hasLabel =
+      w.label !== undefined && w.label !== null && String(w.label).length > 0;
+    var baseIcon =
+      w.icon !== undefined && w.icon !== null
+        ? w.icon
+        : w.icon_off !== undefined && w.icon_off !== null
+          ? w.icon_off
+          : w.icon_on;
 
     // Dynamic sizing based on button size (override with icon_size / label_size)
     var base = Math.min(w.w, w.h);
@@ -2787,7 +3291,7 @@
     } else if (hasIcon && hasLabel) {
       iconSize = Math.round(base * 0.42);
     } else if (hasIcon) {
-      iconSize = Math.round(base * 0.60);
+      iconSize = Math.round(base * 0.6);
     }
 
     if (w.label_size !== undefined) {
@@ -2795,7 +3299,7 @@
     } else if (hasIcon && hasLabel) {
       labelSize = Math.round(base * 0.14);
     } else if (hasLabel) {
-      labelSize = Math.round(base * 0.20);
+      labelSize = Math.round(base * 0.2);
     }
 
     if (!hasIcon) {
@@ -2816,7 +3320,7 @@
     }
 
     function setButtonLabel(text, state) {
-      var t = (text !== undefined && text !== null) ? String(text) : '';
+      var t = text !== undefined && text !== null ? String(text) : '';
       t = applyTemplate(t, state);
       setContent(labelEl, t);
     }
@@ -2829,7 +3333,7 @@
 
     // Apply base styles (overrides applied on first state update)
     el.style.background = resolveColor(w.background || 'surface2');
-    iconEl.style.color  = resolveColor(w.icon_color  || 'text');
+    iconEl.style.color = resolveColor(w.icon_color || 'text');
     labelEl.style.color = resolveColor(w.label_color || 'text_dim');
 
     function applyButtonLockState(locked) {
@@ -2845,25 +3349,38 @@
 
     applyButtonLockState(buttonLocked);
 
-    var buttonStateCache  = w.entity  ? (entityStates[w.entity]  || null) : null;
-    var buttonHasPageSrc  = hasOverrideSource(w, 'page');
+    var buttonStateCache = w.entity ? entityStates[w.entity] || null : null;
+    var buttonHasPageSrc = hasOverrideSource(w, 'page');
 
     function updateButtonOverrides(state) {
       var ovr = resolveOverrides(w, state) || {};
-      applyButtonLockState((ovr.locked !== undefined) ? !!ovr.locked : !!w.locked);
-      el.style.background = resolveColor(ovr.background !== undefined ? ovr.background : (w.background || 'surface2'));
-      iconEl.style.color  = resolveColor(ovr.icon_color  !== undefined ? ovr.icon_color  : (w.icon_color  || 'text'));
-      labelEl.style.color = resolveColor(ovr.label_color !== undefined ? ovr.label_color : (w.label_color || 'text_dim'));
-      if (ovr.opacity      !== undefined) el.style.opacity     = ovr.opacity;
-      if (ovr.border_color !== undefined) el.style.borderColor = resolveColor(ovr.border_color);
+      applyButtonLockState(
+        ovr.locked !== undefined ? !!ovr.locked : !!w.locked,
+      );
+      el.style.background = resolveColor(
+        ovr.background !== undefined
+          ? ovr.background
+          : w.background || 'surface2',
+      );
+      iconEl.style.color = resolveColor(
+        ovr.icon_color !== undefined ? ovr.icon_color : w.icon_color || 'text',
+      );
+      labelEl.style.color = resolveColor(
+        ovr.label_color !== undefined
+          ? ovr.label_color
+          : w.label_color || 'text_dim',
+      );
+      if (ovr.opacity !== undefined) el.style.opacity = ovr.opacity;
+      if (ovr.border_color !== undefined)
+        el.style.borderColor = resolveColor(ovr.border_color);
       if (ovr.border_width !== undefined) {
         el.style.borderWidth = ovr.border_width + 'px';
         el.style.borderStyle = 'solid';
-        el.style.boxSizing   = 'border-box';
+        el.style.boxSizing = 'border-box';
       }
-      var icon = (ovr.icon !== undefined) ? ovr.icon : (baseIcon || '');
+      var icon = ovr.icon !== undefined ? ovr.icon : baseIcon || '';
       setButtonIcon(icon);
-      var labelText = (ovr.label !== undefined) ? ovr.label : (w.label || '');
+      var labelText = ovr.label !== undefined ? ovr.label : w.label || '';
       setButtonLabel(labelText, state);
     }
 
@@ -2885,18 +3402,39 @@
       el.addEventListener('click', function () {
         if (buttonLocked) return;
         var action = w.action;
-        if (action.data && w.entity && hasTemplate(JSON.stringify(action.data))) {
+        if (
+          action.data &&
+          w.entity &&
+          hasTemplate(JSON.stringify(action.data))
+        ) {
           action = JSON.parse(JSON.stringify(action));
-          action.data = resolveActionData(action.data, entityStates[w.entity] || null);
+          action.data = resolveActionData(
+            action.data,
+            entityStates[w.entity] || null,
+          );
         }
         handleAction(action);
         resetReturnTimer();
       });
-      el.addEventListener('mousedown',  function() { if (!buttonLocked) el.style.opacity = '0.75'; });
-      el.addEventListener('mouseup',    function() { el.style.opacity = '1'; });
-      el.addEventListener('mouseleave', function() { el.style.opacity = '1'; });
-      el.addEventListener('touchstart', function() { if (!buttonLocked) el.style.opacity = '0.75'; }, { passive: true });
-      el.addEventListener('touchend',   function() { el.style.opacity = '1'; });
+      el.addEventListener('mousedown', function () {
+        if (!buttonLocked) el.style.opacity = '0.75';
+      });
+      el.addEventListener('mouseup', function () {
+        el.style.opacity = '1';
+      });
+      el.addEventListener('mouseleave', function () {
+        el.style.opacity = '1';
+      });
+      el.addEventListener(
+        'touchstart',
+        function () {
+          if (!buttonLocked) el.style.opacity = '0.75';
+        },
+        { passive: true },
+      );
+      el.addEventListener('touchend', function () {
+        el.style.opacity = '1';
+      });
     }
   }
 
@@ -2934,35 +3472,35 @@
     el.className += ' widget-arc';
     el.style.overflow = 'visible';
 
-    var min           = w.min !== undefined ? w.min : 0;
-    var max           = w.max !== undefined ? w.max : 100;
-    var valueAttr     = w.value_attribute;
+    var min = w.min !== undefined ? w.min : 0;
+    var max = w.max !== undefined ? w.max : 100;
+    var valueAttr = w.value_attribute;
     var markerEntityId = w.marker_entity || null;
     var markerAttrName = w.marker_attribute || null;
-    var startAngle    = w.start_angle !== undefined ? w.start_angle : 135;
-    var endAngle      = w.end_angle   !== undefined ? w.end_angle   : 405;
-    var lineWidth     = w.line_width  !== undefined ? w.line_width  : 12;
-    var trackColor    = resolveColor(w.background || 'surface2');
+    var startAngle = w.start_angle !== undefined ? w.start_angle : 135;
+    var endAngle = w.end_angle !== undefined ? w.end_angle : 405;
+    var lineWidth = w.line_width !== undefined ? w.line_width : 12;
+    var trackColor = resolveColor(w.background || 'surface2');
 
     // SVG coordinate system: cx/cy at centre, r fits inside widget
     var size = Math.min(w.w, w.h);
-    var cx   = w.w / 2;
-    var cy   = w.h / 2;
-    var r    = (size / 2) - (lineWidth / 2) - 2;
+    var cx = w.w / 2;
+    var cy = w.h / 2;
+    var r = size / 2 - lineWidth / 2 - 2;
 
-    var ns  = 'http://www.w3.org/2000/svg';
+    var ns = 'http://www.w3.org/2000/svg';
     var svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('width',  w.w);
+    svg.setAttribute('width', w.w);
     svg.setAttribute('height', w.h);
     svg.style.position = 'absolute';
-    svg.style.top      = '0';
-    svg.style.left     = '0';
+    svg.style.top = '0';
+    svg.style.left = '0';
     svg.style.overflow = 'visible';
 
     // Track arc (full background arc)
     var trackPath = document.createElementNS(ns, 'path');
-    trackPath.setAttribute('fill',         'none');
-    trackPath.setAttribute('stroke',       trackColor);
+    trackPath.setAttribute('fill', 'none');
+    trackPath.setAttribute('stroke', trackColor);
     trackPath.setAttribute('stroke-width', lineWidth);
     trackPath.setAttribute('stroke-linecap', 'round');
     trackPath.setAttribute('d', describeArc(cx, cy, r, startAngle, endAngle));
@@ -2970,7 +3508,7 @@
 
     // Value arc (filled portion)
     var valuePath = document.createElementNS(ns, 'path');
-    valuePath.setAttribute('fill',         'none');
+    valuePath.setAttribute('fill', 'none');
     valuePath.setAttribute('stroke-width', lineWidth);
     valuePath.setAttribute('stroke-linecap', 'round');
     svg.appendChild(valuePath);
@@ -2992,25 +3530,36 @@
     var valueEl = document.createElement('div');
     valueEl.style.cssText = [
       'position:absolute',
-      'top:0', 'left:0',
+      'top:0',
+      'left:0',
       'width:' + w.w + 'px',
       'height:' + w.h + 'px',
       'display:flex',
       'flex-direction:column',
       'align-items:center',
       'justify-content:center',
-      'pointer-events:none'
+      'pointer-events:none',
     ].join(';');
 
     var numEl = document.createElement('div');
-    numEl.style.cssText = 'font-size:' + Math.round(size * 0.22) + 'px;font-weight:600;line-height:1;color:' + resolveColor(w.color || 'text') + ';';
+    numEl.style.cssText =
+      'font-size:' +
+      Math.round(size * 0.22) +
+      'px;font-weight:600;line-height:1;color:' +
+      resolveColor(w.color || 'text') +
+      ';';
     numEl.textContent = '--';
     valueEl.appendChild(numEl);
 
     var lblEl = null;
     if (w.label) {
       lblEl = document.createElement('div');
-      lblEl.style.cssText = 'font-size:' + Math.round(size * 0.11) + 'px;margin-top:4px;color:' + resolveColor(w.label_color || 'text_muted') + ';';
+      lblEl.style.cssText =
+        'font-size:' +
+        Math.round(size * 0.11) +
+        'px;margin-top:4px;color:' +
+        resolveColor(w.label_color || 'text_muted') +
+        ';';
       setContent(lblEl, w.label);
       valueEl.appendChild(lblEl);
     }
@@ -3020,7 +3569,12 @@
     function readArcValue(state, attrName) {
       if (!state) return null;
       var raw;
-      if (attrName && state.attributes && state.attributes[attrName] !== undefined && state.attributes[attrName] !== null) {
+      if (
+        attrName &&
+        state.attributes &&
+        state.attributes[attrName] !== undefined &&
+        state.attributes[attrName] !== null
+      ) {
         raw = state.attributes[attrName];
       } else {
         raw = state.state;
@@ -3034,42 +3588,75 @@
       if (!state) return;
       var s = resolveOverrides(w, state, state2) || {};
       var rawValue = readArcValue(state, valueAttr);
-      if (rawValue === null) { setContent(numEl, '--'); valuePath.setAttribute('d', ''); return; }
+      if (rawValue === null) {
+        setContent(numEl, '--');
+        valuePath.setAttribute('d', '');
+        return;
+      }
       var raw = parseFloat(rawValue);
-      if (isNaN(raw)) { setContent(numEl, String(rawValue)); valuePath.setAttribute('d', ''); return; }
+      if (isNaN(raw)) {
+        setContent(numEl, String(rawValue));
+        valuePath.setAttribute('d', '');
+        return;
+      }
 
-      var val     = Math.max(min, Math.min(max, raw));
-      var spanVal = (max - min);
+      var val = Math.max(min, Math.min(max, raw));
+      var spanVal = max - min;
       if (spanVal === 0) spanVal = 1;
-      var pct     = (val - min) / spanVal;
+      var pct = (val - min) / spanVal;
       var fillEnd = startAngle + pct * (endAngle - startAngle);
 
-      var thresholdColor = getThresholdColor(w, raw, (w.color || 'primary'));
-      var arcColor = resolveColor(s.color !== undefined ? s.color : thresholdColor);
+      var thresholdColor = getThresholdColor(w, raw, w.color || 'primary');
+      var arcColor = resolveColor(
+        s.color !== undefined ? s.color : thresholdColor,
+      );
 
       valuePath.setAttribute('stroke', arcColor);
       if (pct <= 0) {
         valuePath.setAttribute('d', '');
       } else if (pct >= 1) {
         // Full arc - draw as track to avoid path calculation edge case
-        valuePath.setAttribute('d', describeArc(cx, cy, r, startAngle, endAngle - 0.01));
+        valuePath.setAttribute(
+          'd',
+          describeArc(cx, cy, r, startAngle, endAngle - 0.01),
+        );
       } else {
-        valuePath.setAttribute('d', describeArc(cx, cy, r, startAngle, fillEnd));
+        valuePath.setAttribute(
+          'd',
+          describeArc(cx, cy, r, startAngle, fillEnd),
+        );
       }
 
       setContent(numEl, formatValue(rawValue, w));
       numEl.style.color = arcColor;
 
       // marker_entity/marker_attribute take priority over legacy marker_value_attribute
-      var markerSrc  = markerState || state;
-      var markerAttr = markerAttrName || ((s.marker_value_attribute !== undefined) ? s.marker_value_attribute : w.marker_value_attribute);
-      var markerRaw  = readArcValue(markerSrc, markerAttr);
-      var markerNum  = parseFloat(markerRaw);
-      var markerStyle = String((s.marker_style !== undefined) ? s.marker_style : (w.marker_style || 'dot')).toLowerCase();
+      var markerSrc = markerState || state;
+      var markerAttr =
+        markerAttrName ||
+        (s.marker_value_attribute !== undefined
+          ? s.marker_value_attribute
+          : w.marker_value_attribute);
+      var markerRaw = readArcValue(markerSrc, markerAttr);
+      var markerNum = parseFloat(markerRaw);
+      var markerStyle = String(
+        s.marker_style !== undefined ? s.marker_style : w.marker_style || 'dot',
+      ).toLowerCase();
       if (markerStyle !== 'tick') markerStyle = 'dot';
-      var markerColor = resolveColor((s.marker_color !== undefined) ? s.marker_color : (w.marker_color || 'text'));
-      var markerSize = parseFloat((s.marker_size !== undefined) ? s.marker_size : (w.marker_size !== undefined ? w.marker_size : Math.max(8, Math.round(lineWidth * 0.9))));
-      if (isNaN(markerSize) || markerSize <= 0) markerSize = Math.max(8, Math.round(lineWidth * 0.9));
+      var markerColor = resolveColor(
+        s.marker_color !== undefined
+          ? s.marker_color
+          : w.marker_color || 'text',
+      );
+      var markerSize = parseFloat(
+        s.marker_size !== undefined
+          ? s.marker_size
+          : w.marker_size !== undefined
+            ? w.marker_size
+            : Math.max(8, Math.round(lineWidth * 0.9)),
+      );
+      if (isNaN(markerSize) || markerSize <= 0)
+        markerSize = Math.max(8, Math.round(lineWidth * 0.9));
 
       if ((markerAttr || markerEntityId) && !isNaN(markerNum)) {
         var mVal = Math.max(min, Math.min(max, markerNum));
@@ -3079,9 +3666,15 @@
           var halfLen = markerSize / 2;
           var p1 = polarToCartesian(cx, cy, r - halfLen, mAng);
           var p2 = polarToCartesian(cx, cy, r + halfLen, mAng);
-          markerTick.setAttribute('d', 'M ' + p1.x + ' ' + p1.y + ' L ' + p2.x + ' ' + p2.y);
+          markerTick.setAttribute(
+            'd',
+            'M ' + p1.x + ' ' + p1.y + ' L ' + p2.x + ' ' + p2.y,
+          );
           markerTick.setAttribute('stroke', markerColor);
-          markerTick.setAttribute('stroke-width', Math.max(2, Math.round(lineWidth * 0.22)));
+          markerTick.setAttribute(
+            'stroke-width',
+            Math.max(2, Math.round(lineWidth * 0.22)),
+          );
           markerTick.style.display = '';
           markerDot.style.display = 'none';
         } else {
@@ -3099,28 +3692,50 @@
       }
 
       // Apply remaining overrideable properties
-      var tColor = s.background !== undefined ? s.background : (w.background || 'surface2');
+      var tColor =
+        s.background !== undefined ? s.background : w.background || 'surface2';
       trackPath.setAttribute('stroke', resolveColor(tColor));
       if (s.opacity !== undefined) el.style.opacity = s.opacity;
       else if (w.opacity !== undefined) el.style.opacity = w.opacity;
       if (lblEl) {
-        setContent(lblEl, s.label !== undefined ? String(s.label) : (w.label || ''));
-        lblEl.style.color = resolveColor(s.label_color !== undefined ? s.label_color : (w.label_color || 'text_muted'));
+        setContent(
+          lblEl,
+          s.label !== undefined ? String(s.label) : w.label || '',
+        );
+        lblEl.style.color = resolveColor(
+          s.label_color !== undefined
+            ? s.label_color
+            : w.label_color || 'text_muted',
+        );
       }
     }
 
     if (w.entity || w.entity2 || markerEntityId) {
-      var arcStateCache    = w.entity        ? (entityStates[w.entity]        || null) : null;
-      var arcState2Cache   = w.entity2       ? (entityStates[w.entity2]       || null) : null;
-      var markerStateCache = markerEntityId  ? (entityStates[markerEntityId]  || null) : null;
+      var arcStateCache = w.entity ? entityStates[w.entity] || null : null;
+      var arcState2Cache = w.entity2 ? entityStates[w.entity2] || null : null;
+      var markerStateCache = markerEntityId
+        ? entityStates[markerEntityId] || null
+        : null;
 
       function doArcUpdate() {
         updateArc(arcStateCache, arcState2Cache, markerStateCache);
       }
 
-      if (w.entity)       registerEntityCallback(w.entity,       function(s) { arcStateCache    = s; doArcUpdate(); });
-      if (w.entity2)      registerEntityCallback(w.entity2,      function(s) { arcState2Cache   = s; doArcUpdate(); });
-      if (markerEntityId) registerEntityCallback(markerEntityId, function(s) { markerStateCache = s; doArcUpdate(); });
+      if (w.entity)
+        registerEntityCallback(w.entity, function (s) {
+          arcStateCache = s;
+          doArcUpdate();
+        });
+      if (w.entity2)
+        registerEntityCallback(w.entity2, function (s) {
+          arcState2Cache = s;
+          doArcUpdate();
+        });
+      if (markerEntityId)
+        registerEntityCallback(markerEntityId, function (s) {
+          markerStateCache = s;
+          doArcUpdate();
+        });
 
       // Apply cached state immediately (handles page nav after WS already connected)
       if (arcStateCache) doArcUpdate();
@@ -3130,24 +3745,23 @@
   // Convert polar angle (degrees, 0=top, clockwise) to SVG arc path
   function describeArc(cx, cy, r, startDeg, endDeg) {
     var start = polarToCartesian(cx, cy, r, startDeg);
-    var end   = polarToCartesian(cx, cy, r, endDeg);
-    var span  = endDeg - startDeg;
+    var end = polarToCartesian(cx, cy, r, endDeg);
+    var span = endDeg - startDeg;
     // Normalise span to handle wrap-around
-    while (span < 0)   span += 360;
+    while (span < 0) span += 360;
     while (span > 360) span -= 360;
     var large = span > 180 ? 1 : 0;
-    return [
-      'M', start.x, start.y,
-      'A', r, r, 0, large, 1, end.x, end.y
-    ].join(' ');
+    return ['M', start.x, start.y, 'A', r, r, 0, large, 1, end.x, end.y].join(
+      ' ',
+    );
   }
 
   function polarToCartesian(cx, cy, r, angleDeg) {
     // Offset by -90 so 0 degrees = top, then add offset
-    var rad = (angleDeg - 90) * Math.PI / 180;
+    var rad = ((angleDeg - 90) * Math.PI) / 180;
     return {
       x: cx + r * Math.cos(rad),
-      y: cy + r * Math.sin(rad)
+      y: cy + r * Math.sin(rad),
     };
   }
 
@@ -3155,18 +3769,22 @@
   // Displays a static or URL-sourced image. Optional fullscreen on tap.
   function renderImage(el, w) {
     el.className += ' widget-image';
-    el.style.overflow     = 'hidden';
+    el.style.overflow = 'hidden';
     var radiusPx = (w.radius !== undefined ? w.radius : 0) + 'px';
     el.style.borderRadius = radiusPx;
-    el.style.background   = w.background ? resolveColor(w.background) : 'transparent';
-    el.style.cursor       = w.fullscreen_on_tap ? 'pointer' : 'default';
-    if (!w.fullscreen_on_tap && !w.action) { el.style.pointerEvents = 'none'; }
+    el.style.background = w.background
+      ? resolveColor(w.background)
+      : 'transparent';
+    el.style.cursor = w.fullscreen_on_tap ? 'pointer' : 'default';
+    if (!w.fullscreen_on_tap && !w.action) {
+      el.style.pointerEvents = 'none';
+    }
 
     var img = document.createElement('img');
-    img.style.width     = '100%';
-    img.style.height    = '100%';
+    img.style.width = '100%';
+    img.style.height = '100%';
     img.style.objectFit = w.fit || 'cover';
-    img.style.display   = 'block';
+    img.style.display = 'block';
     var currentImageUrl = w.url || '';
     img.src = currentImageUrl;
     el.appendChild(img);
@@ -3203,16 +3821,23 @@
     function normalizeImageUrl(raw) {
       if (!raw) return '';
       var u = String(raw);
-      if (/^https?:\/\//i.test(u) || u.indexOf('data:') === 0 || u.indexOf('blob:') === 0) return u;
+      if (
+        /^https?:\/\//i.test(u) ||
+        u.indexOf('data:') === 0 ||
+        u.indexOf('blob:') === 0
+      )
+        return u;
       if (u.charAt(0) === '/') return haUrl + u;
       return u;
     }
 
     function resolveUrl(state) {
-      var ovr = (w.entity && state) ? (resolveOverrides(w, state) || {}) : {};
+      var ovr = w.entity && state ? resolveOverrides(w, state) || {} : {};
       if (ovr.url !== undefined) return normalizeImageUrl(String(ovr.url));
       var raw = w.url || '';
-      return normalizeImageUrl(hasTemplate(raw) ? applyTemplate(raw, state) : raw);
+      return normalizeImageUrl(
+        hasTemplate(raw) ? applyTemplate(raw, state) : raw,
+      );
     }
 
     function updateImageFromState(state) {
@@ -3224,7 +3849,10 @@
           nextUrl = normalizeImageUrl(attrVal);
           // Avoid stale album-art cache when track changes but path is reused.
           var cacheKey = state.last_updated || state.last_changed || Date.now();
-          nextUrl += (nextUrl.indexOf('?') !== -1 ? '&' : '?') + '_t=' + encodeURIComponent(cacheKey);
+          nextUrl +=
+            (nextUrl.indexOf('?') !== -1 ? '&' : '?') +
+            '_t=' +
+            encodeURIComponent(cacheKey);
         }
       } else {
         nextUrl = resolveUrl(state);
@@ -3236,18 +3864,23 @@
     }
 
     // Apply template/overrides to initial url
-    var initialUrl = resolveUrl(w.entity ? (entityStates[w.entity] || null) : null);
-    if (initialUrl) { currentImageUrl = initialUrl; img.src = initialUrl; }
+    var initialUrl = resolveUrl(
+      w.entity ? entityStates[w.entity] || null : null,
+    );
+    if (initialUrl) {
+      currentImageUrl = initialUrl;
+      img.src = initialUrl;
+    }
 
     if (w.entity) {
-      registerEntityCallback(w.entity, function(state) {
+      registerEntityCallback(w.entity, function (state) {
         updateImageFromState(state);
       });
       if (entityStates[w.entity]) updateImageFromState(entityStates[w.entity]);
     }
 
     if (w.fullscreen_on_tap) {
-      el.addEventListener('click', function() {
+      el.addEventListener('click', function () {
         openFullscreenImage(currentImageUrl || w.url || '', null);
       });
     }
@@ -3259,26 +3892,31 @@
     el.className += ' widget-agenda';
 
     // Prefer agenda-specific key to avoid ambiguity with designer/stage scale concepts.
-    var scaleRaw = (w.agenda_scale !== undefined) ? w.agenda_scale : w.scale;
-    var scale = (scaleRaw !== undefined) ? parseFloat(scaleRaw) : 1;
+    var scaleRaw = w.agenda_scale !== undefined ? w.agenda_scale : w.scale;
+    var scale = scaleRaw !== undefined ? parseFloat(scaleRaw) : 1;
     if (isNaN(scale) || scale <= 0) scale = 1;
     function s(px) {
       return Math.max(1, Math.round(px * scale));
     }
 
-    var radius = s((w.radius !== undefined) ? w.radius : 12);
-    var pad = s((w.padding !== undefined) ? w.padding : 10);
-    var refreshSec = (w.refresh_interval !== undefined) ? parseInt(w.refresh_interval, 10) : 120;
+    var radius = s(w.radius !== undefined ? w.radius : 12);
+    var pad = s(w.padding !== undefined ? w.padding : 10);
+    var refreshSec =
+      w.refresh_interval !== undefined ? parseInt(w.refresh_interval, 10) : 120;
     if (isNaN(refreshSec) || refreshSec < 15) refreshSec = 120;
-    var daysAhead = (w.days_ahead !== undefined) ? parseInt(w.days_ahead, 10) : 7;
+    var daysAhead = w.days_ahead !== undefined ? parseInt(w.days_ahead, 10) : 7;
     if (isNaN(daysAhead) || daysAhead < 1) daysAhead = 7;
     var timeFormat = String(w.time_format || '12h').toLowerCase();
     var layout = String(w.layout || 'list').toLowerCase();
     if (layout !== 'columns') layout = 'list';
-    var todayIndicator = (w.today_indicator === true);
-    var showBlankDays = (w.show_blank_days === true);
-    var calendars = (w.calendars && Object.prototype.toString.call(w.calendars) === '[object Array]') ? w.calendars : [];
-    var showLegend = (w.legend === true);
+    var todayIndicator = w.today_indicator === true;
+    var showBlankDays = w.show_blank_days === true;
+    var calendars =
+      w.calendars &&
+      Object.prototype.toString.call(w.calendars) === '[object Array]'
+        ? w.calendars
+        : [];
+    var showLegend = w.legend === true;
     var selectedCalendarKey = null;
     var cachedEvents = [];
     var cachedRangeStart = null;
@@ -3308,16 +3946,20 @@
     fade.style.height = s(56) + 'px';
     fade.style.pointerEvents = 'none';
     fade.style.display = 'none';
-    fade.style.background = 'linear-gradient(180deg, rgba(0,0,0,0), ' + resolveColor(w.background || 'surface') + ' 85%)';
+    fade.style.background =
+      'linear-gradient(180deg, rgba(0,0,0,0), ' +
+      resolveColor(w.background || 'surface') +
+      ' 85%)';
     el.appendChild(fade);
 
     function updateOverflowFade() {
-      var hasOverflow = (list.scrollHeight > (list.clientHeight + 1));
+      var hasOverflow = list.scrollHeight > list.clientHeight + 1;
       if (!hasOverflow) {
         fade.style.display = 'none';
         return;
       }
-      var atBottom = (list.scrollTop + list.clientHeight >= list.scrollHeight - 2);
+      var atBottom =
+        list.scrollTop + list.clientHeight >= list.scrollHeight - 2;
       fade.style.display = atBottom ? 'none' : 'block';
     }
     list.addEventListener('scroll', updateOverflowFade);
@@ -3325,11 +3967,13 @@
     function setAgendaEmpty(text, monthDate) {
       list.innerHTML = '';
       if (showLegend && monthDate && w.show_month_headers !== false) {
-        list.appendChild(renderMonthHeaderRow(getMonthHeader(monthDate), true, 0, s(8)));
+        list.appendChild(
+          renderMonthHeaderRow(getMonthHeader(monthDate), true, 0, s(8)),
+        );
       }
       var empty = document.createElement('div');
       empty.style.color = resolveColor(w.muted_color || 'text_muted');
-      empty.style.fontSize = s((w.font_size || 15)) + 'px';
+      empty.style.fontSize = s(w.font_size || 15) + 'px';
       empty.style.padding = s(8) + 'px ' + s(2) + 'px';
       empty.textContent = text;
       list.appendChild(empty);
@@ -3338,7 +3982,8 @@
 
     function parseEventDate(value) {
       if (!value) return null;
-      if (Object.prototype.toString.call(value) === '[object Date]') return value;
+      if (Object.prototype.toString.call(value) === '[object Date]')
+        return value;
       if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
         return new Date(value + 'T00:00:00');
       }
@@ -3362,7 +4007,9 @@
     }
 
     function formatDateKey(d) {
-      return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+      return (
+        d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate())
+      );
     }
 
     function startOfDay(d) {
@@ -3379,14 +4026,32 @@
     }
 
     function getWeekdayLong(d) {
-      var names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      var names = [
+        'Sunday',
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+      ];
       return names[d.getDay()];
     }
 
     function getMonthHeader(d) {
       var months = [
-        'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
-        'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
+        'JANUARY',
+        'FEBRUARY',
+        'MARCH',
+        'APRIL',
+        'MAY',
+        'JUNE',
+        'JULY',
+        'AUGUST',
+        'SEPTEMBER',
+        'OCTOBER',
+        'NOVEMBER',
+        'DECEMBER',
       ];
       return months[d.getMonth()];
     }
@@ -3404,11 +4069,19 @@
     }
 
     function getCalendarDisplayName(calCfg) {
-      if (calCfg && calCfg.name !== undefined && calCfg.name !== null && String(calCfg.name).trim() !== '') {
+      if (
+        calCfg &&
+        calCfg.name !== undefined &&
+        calCfg.name !== null &&
+        String(calCfg.name).trim() !== ''
+      ) {
         return String(calCfg.name).trim();
       }
-      var entity = (calCfg && calCfg.entity) ? String(calCfg.entity) : '';
-      var raw = entity.indexOf('.') !== -1 ? entity.split('.').slice(1).join('.') : entity;
+      var entity = calCfg && calCfg.entity ? String(calCfg.entity) : '';
+      var raw =
+        entity.indexOf('.') !== -1
+          ? entity.split('.').slice(1).join('.')
+          : entity;
       raw = raw.replace(/^m365calendar_/, '');
       raw = raw.replace(/^local_/, '');
       raw = raw.replace(/_/g, ' ').trim();
@@ -3428,7 +4101,7 @@
         items.push({
           key: key,
           name: getCalendarDisplayName(cfg),
-          color: resolveColor(cfg.color || 'primary')
+          color: resolveColor(cfg.color || 'primary'),
         });
       }
       return items;
@@ -3438,14 +4111,19 @@
       if (!selectedCalendarKey) return events;
       var out = [];
       for (var i = 0; i < events.length; i++) {
-        if (events[i] && events[i].calendarKey === selectedCalendarKey) out.push(events[i]);
+        if (events[i] && events[i].calendarKey === selectedCalendarKey)
+          out.push(events[i]);
       }
       return out;
     }
 
     function rerenderFromCache() {
       if (!cachedRangeStart || !cachedRangeEnd) return;
-      renderEvents(getFilteredEvents(cachedEvents), cachedRangeStart, cachedRangeEnd);
+      renderEvents(
+        getFilteredEvents(cachedEvents),
+        cachedRangeStart,
+        cachedRangeEnd,
+      );
     }
 
     function renderLegend(container) {
@@ -3464,7 +4142,7 @@
       container.appendChild(wrap);
 
       for (var i = 0; i < items.length; i++) {
-        (function(it) {
+        (function (it) {
           var entry = document.createElement('button');
           entry.type = 'button';
           entry.style.display = 'inline-flex';
@@ -3476,10 +4154,13 @@
           entry.style.background = 'transparent';
           entry.style.cursor = 'pointer';
           entry.style.color = resolveColor(w.detail_color || 'text_muted');
-          entry.style.fontSize = s((w.detail_size || 12)) + 'px';
+          entry.style.fontSize = s(w.detail_size || 12) + 'px';
           entry.style.lineHeight = '1';
           entry.style.whiteSpace = 'nowrap';
-          entry.style.opacity = (selectedCalendarKey && selectedCalendarKey !== it.key) ? '0.55' : '1';
+          entry.style.opacity =
+            selectedCalendarKey && selectedCalendarKey !== it.key
+              ? '0.55'
+              : '1';
           if (selectedCalendarKey === it.key) {
             entry.style.background = rgbaWithAlpha(it.color, 0.16);
           }
@@ -3496,9 +4177,10 @@
           label.textContent = it.name;
           entry.appendChild(label);
 
-          entry.addEventListener('click', function(e) {
+          entry.addEventListener('click', function (e) {
             e.stopPropagation();
-            selectedCalendarKey = (selectedCalendarKey === it.key) ? null : it.key;
+            selectedCalendarKey =
+              selectedCalendarKey === it.key ? null : it.key;
             rerenderFromCache();
             resetReturnTimer();
           });
@@ -3508,7 +4190,12 @@
       }
     }
 
-    function renderMonthHeaderRow(monthText, withLegend, topMarginPx, bottomMarginPx) {
+    function renderMonthHeaderRow(
+      monthText,
+      withLegend,
+      topMarginPx,
+      bottomMarginPx,
+    ) {
       var row = document.createElement('div');
       row.style.display = 'flex';
       row.style.alignItems = 'center';
@@ -3518,7 +4205,7 @@
 
       var month = document.createElement('div');
       month.style.color = resolveColor(w.month_color || 'primary');
-      month.style.fontSize = s((w.month_size || 13)) + 'px';
+      month.style.fontSize = s(w.month_size || 13) + 'px';
       month.style.letterSpacing = s(2) + 'px';
       month.style.opacity = '0.95';
       month.style.whiteSpace = 'nowrap';
@@ -3533,14 +4220,18 @@
 
     function isAllDayEvent(rawEvent, startRaw) {
       if (!rawEvent) return false;
-      if (rawEvent.all_day === true || rawEvent.is_all_day === true) return true;
-      return (typeof startRaw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(startRaw));
+      if (rawEvent.all_day === true || rawEvent.is_all_day === true)
+        return true;
+      return (
+        typeof startRaw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(startRaw)
+      );
     }
 
     function normalizeOneEvent(rawEvent, calCfg) {
       if (!rawEvent) return null;
 
-      var summary = rawEvent.summary || rawEvent.message || rawEvent.title || '(No title)';
+      var summary =
+        rawEvent.summary || rawEvent.message || rawEvent.title || '(No title)';
       var startRaw = null;
       var endRaw = null;
 
@@ -3549,13 +4240,18 @@
       if (rawEvent.start && typeof rawEvent.start === 'object') {
         startRaw = rawEvent.start.dateTime || rawEvent.start.date || null;
       } else {
-        startRaw = rawEvent.start || rawEvent.start_date_time || rawEvent.start_date || null;
+        startRaw =
+          rawEvent.start ||
+          rawEvent.start_date_time ||
+          rawEvent.start_date ||
+          null;
       }
 
       if (rawEvent.end && typeof rawEvent.end === 'object') {
         endRaw = rawEvent.end.dateTime || rawEvent.end.date || null;
       } else {
-        endRaw = rawEvent.end || rawEvent.end_date_time || rawEvent.end_date || null;
+        endRaw =
+          rawEvent.end || rawEvent.end_date_time || rawEvent.end_date || null;
       }
 
       var startDt = parseEventDate(startRaw);
@@ -3568,16 +4264,22 @@
         description: rawEvent.description ? String(rawEvent.description) : '',
         start: startDt,
         end: endDt,
-        startIsDateOnly: (typeof startRaw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(startRaw)),
-        endIsDateOnly: (typeof endRaw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(endRaw)),
+        startIsDateOnly:
+          typeof startRaw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(startRaw),
+        endIsDateOnly:
+          typeof endRaw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(endRaw),
         dayKey: formatDateKey(startDt),
         allDay: isAllDayEvent(rawEvent, startRaw),
         calendarKey: String(calCfg.entity || ''),
         calendarName: getCalendarDisplayName(calCfg),
         color: resolveColor(calCfg.color || 'primary'),
-        fullDayHighlight: (calCfg.full_day_highlight === true),
+        fullDayHighlight: calCfg.full_day_highlight === true,
         icon: calCfg.icon || '',
-        show: (calCfg.show && Object.prototype.toString.call(calCfg.show) === '[object Array]') ? calCfg.show : []
+        show:
+          calCfg.show &&
+          Object.prototype.toString.call(calCfg.show) === '[object Array]'
+            ? calCfg.show
+            : [],
       };
     }
 
@@ -3596,7 +4298,13 @@
       if (hex) {
         var h = hex[1];
         if (h.length === 3) {
-          h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+          h =
+            h.charAt(0) +
+            h.charAt(0) +
+            h.charAt(1) +
+            h.charAt(1) +
+            h.charAt(2) +
+            h.charAt(2);
         }
         var r = parseInt(h.substr(0, 2), 16);
         var g = parseInt(h.substr(2, 2), 16);
@@ -3604,9 +4312,22 @@
         return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
       }
 
-      var rgb = /^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)(?:\s*,\s*[0-9.]+\s*)?\)$/i.exec(c);
+      var rgb =
+        /^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)(?:\s*,\s*[0-9.]+\s*)?\)$/i.exec(
+          c,
+        );
       if (rgb) {
-        return 'rgba(' + Math.round(parseFloat(rgb[1])) + ',' + Math.round(parseFloat(rgb[2])) + ',' + Math.round(parseFloat(rgb[3])) + ',' + alpha + ')';
+        return (
+          'rgba(' +
+          Math.round(parseFloat(rgb[1])) +
+          ',' +
+          Math.round(parseFloat(rgb[2])) +
+          ',' +
+          Math.round(parseFloat(rgb[3])) +
+          ',' +
+          alpha +
+          ')'
+        );
       }
 
       return c;
@@ -3632,7 +4353,8 @@
       card.style.position = 'relative';
       card.style.minHeight = s(58) + 'px';
       card.style.padding = s(10) + 'px ' + s(12) + 'px';
-      card.style.borderRadius = s((w.event_radius !== undefined ? w.event_radius : 8)) + 'px';
+      card.style.borderRadius =
+        s(w.event_radius !== undefined ? w.event_radius : 8) + 'px';
       card.style.background = resolveColor(w.event_background || 'surface2');
       if (ev.allDay && ev.fullDayHighlight) {
         card.style.background = rgbaWithAlpha(ev.color, 0.25);
@@ -3646,13 +4368,13 @@
       accent.style.left = '0';
       accent.style.top = '0';
       accent.style.bottom = '0';
-      accent.style.width = s((w.accent_width || 4)) + 'px';
+      accent.style.width = s(w.accent_width || 4) + 'px';
       accent.style.background = ev.color;
       card.appendChild(accent);
 
       var title = document.createElement('div');
       title.style.color = resolveColor(w.title_color || 'text');
-      title.style.fontSize = s((w.title_size || 16)) + 'px';
+      title.style.fontSize = s(w.title_size || 16) + 'px';
       title.style.lineHeight = '1.2';
       title.style.paddingLeft = s(4) + 'px';
       title.style.whiteSpace = 'nowrap';
@@ -3660,13 +4382,18 @@
       title.style.textOverflow = 'ellipsis';
       var titleText = ev.title;
       if (ev.isContinuation) titleText += ' (cont.)';
-      setContent(title, ev.icon ? ('[mdi:' + ev.icon.replace(/^mdi:/, '') + '] ' + titleText) : titleText);
+      setContent(
+        title,
+        ev.icon
+          ? '[mdi:' + ev.icon.replace(/^mdi:/, '') + '] ' + titleText
+          : titleText,
+      );
       card.appendChild(title);
 
       if (hasShow(ev, 'time')) {
         var t = document.createElement('div');
         t.style.color = resolveColor(w.detail_color || 'text_muted');
-        t.style.fontSize = s((w.detail_size || 13)) + 'px';
+        t.style.fontSize = s(w.detail_size || 13) + 'px';
         t.style.marginTop = s(6) + 'px';
         t.style.paddingLeft = s(4) + 'px';
         if (ev.allDay) {
@@ -3676,7 +4403,8 @@
         } else if (ev.timeMode === 'end_only' && ev.end) {
           t.textContent = 'Until ' + formatClockTime(ev.end);
         } else if (ev.end) {
-          t.textContent = formatClockTime(ev.start) + ' - ' + formatClockTime(ev.end);
+          t.textContent =
+            formatClockTime(ev.start) + ' - ' + formatClockTime(ev.end);
         } else {
           t.textContent = formatClockTime(ev.start);
         }
@@ -3686,7 +4414,7 @@
       if (hasShow(ev, 'location') && ev.location) {
         var loc = document.createElement('div');
         loc.style.color = resolveColor(w.detail_color || 'text_muted');
-        loc.style.fontSize = s((w.detail_size || 13)) + 'px';
+        loc.style.fontSize = s(w.detail_size || 13) + 'px';
         loc.style.marginTop = s(4) + 'px';
         loc.style.paddingLeft = s(4) + 'px';
         loc.style.whiteSpace = 'nowrap';
@@ -3714,10 +4442,10 @@
         infoLink.textContent = 'More information...';
         infoLink.style.marginLeft = s(6) + 'px';
         infoLink.style.color = resolveColor(w.link_color || 'primary');
-        infoLink.style.fontSize = s((w.detail_size || 13)) + 'px';
+        infoLink.style.fontSize = s(w.detail_size || 13) + 'px';
         infoLink.style.textDecoration = 'underline';
         infoLink.style.cursor = 'pointer';
-        infoLink.addEventListener('click', function(e) {
+        infoLink.addEventListener('click', function (e) {
           e.stopPropagation();
           openAgendaInfoModal(ev.title, ev.description);
           resetReturnTimer();
@@ -3741,13 +4469,19 @@
         }
         if (eDay.getTime() < sDay.getTime()) eDay = sDay;
 
-        var multiDay = (eDay.getTime() !== sDay.getTime());
+        var multiDay = eDay.getTime() !== sDay.getTime();
 
-        var iterStart = (sDay.getTime() < rangeStartDay.getTime()) ? rangeStartDay : sDay;
-        var iterEnd = (eDay.getTime() > rangeLastDay.getTime()) ? rangeLastDay : eDay;
+        var iterStart =
+          sDay.getTime() < rangeStartDay.getTime() ? rangeStartDay : sDay;
+        var iterEnd =
+          eDay.getTime() > rangeLastDay.getTime() ? rangeLastDay : eDay;
         if (iterEnd.getTime() < iterStart.getTime()) continue;
 
-        for (var day = new Date(iterStart.getTime()); day.getTime() <= iterEnd.getTime(); day = addDays(day, 1)) {
+        for (
+          var day = new Date(iterStart.getTime());
+          day.getTime() <= iterEnd.getTime();
+          day = addDays(day, 1)
+        ) {
           var seg = 'single';
           if (multiDay) {
             if (day.getTime() === sDay.getTime()) seg = 'start';
@@ -3760,7 +4494,7 @@
             if (ev.hasOwnProperty(k)) ex[k] = ev[k];
           }
           ex.dayKey = formatDateKey(day);
-          ex.isContinuation = (seg === 'middle' || seg === 'end');
+          ex.isContinuation = seg === 'middle' || seg === 'end';
           ex.timeMode = 'normal';
 
           if (multiDay && !ev.allDay) {
@@ -3780,20 +4514,29 @@
             ex.allDay = true;
           }
 
-          ex.sortTs = ex.start ? ex.start.getTime() : (ex.end ? ex.end.getTime() : day.getTime());
+          ex.sortTs = ex.start
+            ? ex.start.getTime()
+            : ex.end
+              ? ex.end.getTime()
+              : day.getTime();
           out.push(ex);
         }
       }
       return out;
     }
 
-    function prepareDayData(events, rangeStartDay, rangeEndExclusive, forceBlankDays) {
+    function prepareDayData(
+      events,
+      rangeStartDay,
+      rangeEndExclusive,
+      forceBlankDays,
+    ) {
       events = expandEventsForRange(events, rangeStartDay, rangeEndExclusive);
-      events.sort(function(a, b) {
+      events.sort(function (a, b) {
         if (a.dayKey < b.dayKey) return -1;
         if (a.dayKey > b.dayKey) return 1;
-        var aa = (a.allDay ? -1 : 1);
-        var bb = (b.allDay ? -1 : 1);
+        var aa = a.allDay ? -1 : 1;
+        var bb = b.allDay ? -1 : 1;
         if (aa !== bb) return aa - bb;
         return a.sortTs - b.sortTs;
       });
@@ -3809,7 +4552,9 @@
       if (forceBlankDays || showBlankDays) {
         var base = new Date(rangeStartDay.getTime());
         for (var di = 0; di < daysAhead; di++) {
-          dayDates.push(new Date(base.getFullYear(), base.getMonth(), base.getDate() + di));
+          dayDates.push(
+            new Date(base.getFullYear(), base.getMonth(), base.getDate() + di),
+          );
         }
       } else {
         for (var dk in byDay) {
@@ -3818,7 +4563,9 @@
           var dayDate = parseEventDate(dk);
           if (dayDate) dayDates.push(dayDate);
         }
-        dayDates.sort(function(a, b) { return a.getTime() - b.getTime(); });
+        dayDates.sort(function (a, b) {
+          return a.getTime() - b.getTime();
+        });
       }
 
       return { byDay: byDay, dayDates: dayDates };
@@ -3831,7 +4578,12 @@
         return;
       }
 
-      var data = prepareDayData(events, rangeStartDay, rangeEndExclusive, false);
+      var data = prepareDayData(
+        events,
+        rangeStartDay,
+        rangeEndExclusive,
+        false,
+      );
       var byDay = data.byDay;
       var dayDates = data.dayDates;
       if (!dayDates.length) {
@@ -3851,12 +4603,12 @@
         var monthKey = dayDate.getFullYear() + '-' + (dayDate.getMonth() + 1);
         if (w.show_month_headers !== false && monthKey !== lastMonthKey) {
           lastMonthKey = monthKey;
-          var withLegend = (i === 0 && showLegend);
+          var withLegend = i === 0 && showLegend;
           var monthRow = renderMonthHeaderRow(
             getMonthHeader(dayDate),
             withLegend,
-            (i === 0 ? 0 : s(14)),
-            s(8)
+            i === 0 ? 0 : s(14),
+            s(8),
           );
           list.appendChild(monthRow);
         }
@@ -3867,7 +4619,7 @@
         row.style.marginBottom = s(8) + 'px';
         list.appendChild(row);
 
-        var dateColWidth = s((w.date_col_width || 52));
+        var dateColWidth = s(w.date_col_width || 52);
         var dateCol = document.createElement('div');
         dateCol.style.width = dateColWidth + 'px';
         dateCol.style.flex = '0 0 ' + dateColWidth + 'px';
@@ -3879,19 +4631,21 @@
           dateCol.style.borderRadius = s(10) + 'px';
           dateCol.style.paddingTop = s(8) + 'px';
           dateCol.style.paddingBottom = s(8) + 'px';
-          dateCol.style.color = resolveColor(w.today_text_color || 'background');
+          dateCol.style.color = resolveColor(
+            w.today_text_color || 'background',
+          );
         }
         row.appendChild(dateCol);
 
         var dayNum = document.createElement('div');
-        dayNum.style.fontSize = s((w.day_size || 36)) + 'px';
+        dayNum.style.fontSize = s(w.day_size || 36) + 'px';
         dayNum.style.lineHeight = '1';
         dayNum.style.fontWeight = '500';
         dayNum.textContent = String(dayDate.getDate());
         dateCol.appendChild(dayNum);
 
         var dayLbl = document.createElement('div');
-        dayLbl.style.fontSize = s((w.weekday_size || 14)) + 'px';
+        dayLbl.style.fontSize = s(w.weekday_size || 14) + 'px';
         dayLbl.style.marginTop = s(4) + 'px';
         dayLbl.style.opacity = '0.85';
         dayLbl.textContent = getWeekdayShort(dayDate).toUpperCase();
@@ -3918,9 +4672,14 @@
 
     function wireColumnFade(scroller, fadeEl) {
       function tick() {
-        var hasOverflow = (scroller.scrollHeight > (scroller.clientHeight + 1));
-        if (!hasOverflow) { fadeEl.style.display = 'none'; return; }
-        var atBottom = (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2);
+        var hasOverflow = scroller.scrollHeight > scroller.clientHeight + 1;
+        if (!hasOverflow) {
+          fadeEl.style.display = 'none';
+          return;
+        }
+        var atBottom =
+          scroller.scrollTop + scroller.clientHeight >=
+          scroller.scrollHeight - 2;
         fadeEl.style.display = atBottom ? 'none' : 'block';
       }
       scroller.addEventListener('scroll', tick);
@@ -3931,7 +4690,12 @@
       list.innerHTML = '';
       fade.style.display = 'none';
 
-      var data = prepareDayData(events, rangeStartDay, rangeEndExclusive, showBlankDays);
+      var data = prepareDayData(
+        events,
+        rangeStartDay,
+        rangeEndExclusive,
+        showBlankDays,
+      );
       var byDay = data.byDay;
       var dayDates = data.dayDates;
       if (!dayDates.length) {
@@ -3939,20 +4703,22 @@
         return;
       }
 
-      var colMin = s((w.column_min_width !== undefined) ? w.column_min_width : 170);
-      var gap = s((w.column_gap !== undefined) ? w.column_gap : 8);
+      var colMin = s(
+        w.column_min_width !== undefined ? w.column_min_width : 170,
+      );
+      var gap = s(w.column_gap !== undefined ? w.column_gap : 8);
       var colCount = dayDates.length;
       var totalGap = gap * Math.max(0, colCount - 1);
-      var listInnerW = Math.max(1, (w.w || 0) - (pad * 2) - s(2));
+      var listInnerW = Math.max(1, (w.w || 0) - pad * 2 - s(2));
       var fitColW = Math.floor((listInnerW - totalGap) / Math.max(1, colCount));
-      var useFitted = (fitColW >= colMin);
+      var useFitted = fitColW >= colMin;
       var colW = useFitted ? fitColW : colMin;
 
       var board = document.createElement('div');
       board.style.display = 'flex';
       board.style.alignItems = 'stretch';
       board.style.width = useFitted ? '100%' : 'auto';
-      board.style.minWidth = useFitted ? '' : ((colW * colCount) + totalGap) + 'px';
+      board.style.minWidth = useFitted ? '' : colW * colCount + totalGap + 'px';
       board.style.height = '100%';
       list.appendChild(board);
 
@@ -3967,8 +4733,10 @@
         var dayEvents = byDay[dKey] || [];
 
         var col = document.createElement('div');
-        col.style.flex = useFitted ? ('1 1 ' + colW + 'px') : ('0 0 ' + colW + 'px');
-        col.style.minWidth = useFitted ? '0' : (colW + 'px');
+        col.style.flex = useFitted
+          ? '1 1 ' + colW + 'px'
+          : '0 0 ' + colW + 'px';
+        col.style.minWidth = useFitted ? '0' : colW + 'px';
         col.style.display = 'flex';
         col.style.flexDirection = 'column';
         col.style.minHeight = '0';
@@ -3987,17 +4755,21 @@
         header.style.color = resolveColor(w.date_color || 'text');
         if (todayIndicator && dKey === todayKey) {
           // Subtle indicator for columns layout: no full header fill.
-          header.style.background = rgbaWithAlpha(resolveColor('primary'), 0.16);
-          header.style.borderBottom = s(2) + 'px solid ' + resolveColor('primary');
+          header.style.background = rgbaWithAlpha(
+            resolveColor('primary'),
+            0.16,
+          );
+          header.style.borderBottom =
+            s(2) + 'px solid ' + resolveColor('primary');
         }
         col.appendChild(header);
 
         var monthKey = dayDate.getFullYear() + '-' + (dayDate.getMonth() + 1);
         var monthSlot = document.createElement('div');
-        monthSlot.style.fontSize = s((w.month_size || 11)) + 'px';
+        monthSlot.style.fontSize = s(w.month_size || 11) + 'px';
         monthSlot.style.letterSpacing = s(1.5) + 'px';
         monthSlot.style.lineHeight = '1';
-        monthSlot.style.minHeight = s((w.month_size || 11)) + 'px';
+        monthSlot.style.minHeight = s(w.month_size || 11) + 'px';
         monthSlot.style.marginBottom = s(4) + 'px';
         monthSlot.style.color = resolveColor(w.month_color || 'primary');
         monthSlot.style.opacity = '0.9';
@@ -4010,13 +4782,14 @@
         header.appendChild(monthSlot);
 
         var dayLine = document.createElement('div');
-        dayLine.style.fontSize = s((w.weekday_size || 21)) + 'px';
+        dayLine.style.fontSize = s(w.weekday_size || 21) + 'px';
         dayLine.style.lineHeight = '1.05';
         dayLine.style.fontWeight = '500';
         dayLine.style.whiteSpace = 'nowrap';
         dayLine.style.overflow = 'hidden';
         dayLine.style.textOverflow = 'ellipsis';
-        dayLine.textContent = String(dayDate.getDate()) + ' ' + getWeekdayLong(dayDate);
+        dayLine.textContent =
+          String(dayDate.getDate()) + ' ' + getWeekdayLong(dayDate);
         header.appendChild(dayLine);
 
         var scrollerWrap = document.createElement('div');
@@ -4047,7 +4820,10 @@
         colFade.style.height = s(48) + 'px';
         colFade.style.pointerEvents = 'none';
         colFade.style.display = 'none';
-        colFade.style.background = 'linear-gradient(180deg, rgba(0,0,0,0), ' + resolveColor(w.background || 'surface') + ' 88%)';
+        colFade.style.background =
+          'linear-gradient(180deg, rgba(0,0,0,0), ' +
+          resolveColor(w.background || 'surface') +
+          ' 88%)';
         scrollerWrap.appendChild(colFade);
         wireColumnFade(scroller, colFade);
       }
@@ -4063,39 +4839,63 @@
 
     function extractEvents(result, entityId) {
       if (!result) return [];
-      if (Object.prototype.toString.call(result) === '[object Array]') return result;
-      if (result.events && Object.prototype.toString.call(result.events) === '[object Array]') return result.events;
-      if (entityId && result[entityId] && Object.prototype.toString.call(result[entityId]) === '[object Array]') return result[entityId];
+      if (Object.prototype.toString.call(result) === '[object Array]')
+        return result;
+      if (
+        result.events &&
+        Object.prototype.toString.call(result.events) === '[object Array]'
+      )
+        return result.events;
+      if (
+        entityId &&
+        result[entityId] &&
+        Object.prototype.toString.call(result[entityId]) === '[object Array]'
+      )
+        return result[entityId];
 
       for (var k in result) {
         if (!result.hasOwnProperty(k)) continue;
-        if (Object.prototype.toString.call(result[k]) === '[object Array]') return result[k];
+        if (Object.prototype.toString.call(result[k]) === '[object Array]')
+          return result[k];
       }
       return [];
     }
 
     function requestCalendar(entityId, startIso, endIso, cb, timerRef) {
-      var url = getHaApiUrl('/api/calendars/' + entityId +
-        '?start=' + encodeURIComponent(startIso) +
-        '&end=' + encodeURIComponent(endIso));
+      var url = getHaApiUrl(
+        '/api/calendars/' +
+          entityId +
+          '?start=' +
+          encodeURIComponent(startIso) +
+          '&end=' +
+          encodeURIComponent(endIso),
+      );
 
       var xhr = new XMLHttpRequest();
       xhr.open('GET', url, true);
       xhr.setRequestHeader('Authorization', 'Bearer ' + haToken);
-      xhr.onload = function() {
+      xhr.onload = function () {
         if (xhr.status !== 200) {
-          reportHavenError('CALENDAR REST ERROR', entityId + '\nHTTP ' + xhr.status + '\n' + url);
+          reportHavenError(
+            'CALENDAR REST ERROR',
+            entityId + '\nHTTP ' + xhr.status + '\n' + url,
+          );
           cb([]);
           return;
         }
         var data = null;
-        try { data = JSON.parse(xhr.responseText); } catch (e) {
+        try {
+          data = JSON.parse(xhr.responseText);
+        } catch (e) {
           reportHavenError('CALENDAR JSON ERROR', entityId + '\n' + e.message);
         }
         cb(extractEvents(data, entityId));
       };
-      xhr.onerror = function() {
-        reportHavenError('CALENDAR REST ERROR', entityId + '\nNetwork error\n' + url);
+      xhr.onerror = function () {
+        reportHavenError(
+          'CALENDAR REST ERROR',
+          entityId + '\nNetwork error\n' + url,
+        );
         cb([]);
       };
       xhr.send();
@@ -4103,7 +4903,9 @@
 
     var timerRef = { id: null, pendingIds: [], stop: null };
     var active = true;
-    timerRef.stop = function() { active = false; };
+    timerRef.stop = function () {
+      active = false;
+    };
     activePageTimers.push(timerRef);
 
     function refreshAgenda() {
@@ -4115,7 +4917,11 @@
 
       timerRef.pendingIds = [];
       var startDay = new Date();
-      startDay = new Date(startDay.getFullYear(), startDay.getMonth(), startDay.getDate());
+      startDay = new Date(
+        startDay.getFullYear(),
+        startDay.getMonth(),
+        startDay.getDate(),
+      );
       var end = new Date(startDay.getTime() + daysAhead * 24 * 60 * 60 * 1000);
       var startIso = startDay.toISOString();
       var endIso = end.toISOString();
@@ -4143,22 +4949,32 @@
         cachedEvents = allEvents.slice(0);
         cachedRangeStart = new Date(startDay.getTime());
         cachedRangeEnd = new Date(end.getTime());
-        renderEvents(getFilteredEvents(cachedEvents), cachedRangeStart, cachedRangeEnd);
+        renderEvents(
+          getFilteredEvents(cachedEvents),
+          cachedRangeStart,
+          cachedRangeEnd,
+        );
       }
 
       for (var i = 0; i < calendars.length; i++) {
         var calCfg = calendars[i];
         if (!calCfg || !calCfg.entity) continue;
         remaining++;
-        (function(cfg) {
-          requestCalendar(cfg.entity, startIso, endIso, function(rawEvents) {
-            if (!active) return;
-            for (var j = 0; j < rawEvents.length; j++) {
-              var ev = normalizeOneEvent(rawEvents[j], cfg);
-              if (ev) allEvents.push(ev);
-            }
-            doneOne();
-          }, timerRef);
+        (function (cfg) {
+          requestCalendar(
+            cfg.entity,
+            startIso,
+            endIso,
+            function (rawEvents) {
+              if (!active) return;
+              for (var j = 0; j < rawEvents.length; j++) {
+                var ev = normalizeOneEvent(rawEvents[j], cfg);
+                if (ev) allEvents.push(ev);
+              }
+              doneOne();
+            },
+            timerRef,
+          );
         })(calCfg);
       }
 
@@ -4197,19 +5013,22 @@
   function renderTasks(el, w) {
     el.className += ' widget-tasks';
 
-    var scaleRaw = (w.tasks_scale !== undefined) ? w.tasks_scale : w.scale;
-    var scale = (scaleRaw !== undefined) ? parseFloat(scaleRaw) : 1;
+    var scaleRaw = w.tasks_scale !== undefined ? w.tasks_scale : w.scale;
+    var scale = scaleRaw !== undefined ? parseFloat(scaleRaw) : 1;
     if (isNaN(scale) || scale <= 0) scale = 1;
-    function s(px) { return Math.max(1, Math.round(px * scale)); }
+    function s(px) {
+      return Math.max(1, Math.round(px * scale));
+    }
 
-    var radius     = s((w.radius     !== undefined) ? w.radius     : 12);
-    var pad        = s((w.padding    !== undefined) ? w.padding    : 10);
-    var refreshSec = (w.refresh_interval !== undefined) ? parseInt(w.refresh_interval, 10) : 120;
+    var radius = s(w.radius !== undefined ? w.radius : 12);
+    var pad = s(w.padding !== undefined ? w.padding : 10);
+    var refreshSec =
+      w.refresh_interval !== undefined ? parseInt(w.refresh_interval, 10) : 120;
     if (isNaN(refreshSec) || refreshSec < 15) refreshSec = 120;
 
-    var lists      = w.lists || [];
+    var lists = w.lists || [];
     var showLegend = w.legend !== false && lists.length > 1;
-    var active     = true;
+    var active = true;
 
     // rgba helper for legend highlight and background opacity
     function rgbaTask(color, alpha) {
@@ -4217,65 +5036,94 @@
       var hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c);
       if (hex) {
         var h = hex[1];
-        if (h.length === 3) { h = h.charAt(0)+h.charAt(0)+h.charAt(1)+h.charAt(1)+h.charAt(2)+h.charAt(2); }
-        var r = parseInt(h.substr(0,2),16), g = parseInt(h.substr(2,2),16), b = parseInt(h.substr(4,2),16);
-        return 'rgba('+r+','+g+','+b+','+alpha+')';
+        if (h.length === 3) {
+          h =
+            h.charAt(0) +
+            h.charAt(0) +
+            h.charAt(1) +
+            h.charAt(1) +
+            h.charAt(2) +
+            h.charAt(2);
+        }
+        var r = parseInt(h.substr(0, 2), 16),
+          g = parseInt(h.substr(2, 2), 16),
+          b = parseInt(h.substr(4, 2), 16);
+        return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
       }
-      var rgb = /^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)(?:\s*,\s*[0-9.]+\s*)?\)$/i.exec(c);
-      if (rgb) return 'rgba('+Math.round(parseFloat(rgb[1]))+','+Math.round(parseFloat(rgb[2]))+','+Math.round(parseFloat(rgb[3]))+','+alpha+')';
+      var rgb =
+        /^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)(?:\s*,\s*[0-9.]+\s*)?\)$/i.exec(
+          c,
+        );
+      if (rgb)
+        return (
+          'rgba(' +
+          Math.round(parseFloat(rgb[1])) +
+          ',' +
+          Math.round(parseFloat(rgb[2])) +
+          ',' +
+          Math.round(parseFloat(rgb[3])) +
+          ',' +
+          alpha +
+          ')'
+        );
       return c;
     }
 
     // Apply background with optional opacity baked in, then reset element-level opacity
     // so that only the background color is affected, not the widget contents.
-    var bgColor = (w.opacity !== undefined)
-      ? rgbaTask(w.background || 'surface', w.opacity)
-      : resolveColor(w.background || 'surface');
-    el.style.background   = bgColor;
+    var bgColor =
+      w.opacity !== undefined
+        ? rgbaTask(w.background || 'surface', w.opacity)
+        : resolveColor(w.background || 'surface');
+    el.style.background = bgColor;
     el.style.borderRadius = radius + 'px';
-    el.style.overflow     = 'hidden';
-    el.style.opacity      = '';
+    el.style.overflow = 'hidden';
+    el.style.opacity = '';
 
     var selectedListKey = null;
-    var cachedItems     = [];
+    var cachedItems = [];
 
     // -- Legend bar --
     var legendEl = null;
     if (showLegend) {
       legendEl = document.createElement('div');
-      legendEl.style.display        = 'flex';
-      legendEl.style.flexWrap       = 'wrap';
+      legendEl.style.display = 'flex';
+      legendEl.style.flexWrap = 'wrap';
       legendEl.style.justifyContent = 'flex-end';
-      legendEl.style.alignItems     = 'center';
-      legendEl.style.padding        = s(4) + 'px ' + s(pad) + 'px ' + s(4) + 'px ' + s(pad) + 'px';
-      legendEl.style.gap            = s(8) + 'px';
+      legendEl.style.alignItems = 'center';
+      legendEl.style.padding =
+        s(4) + 'px ' + s(pad) + 'px ' + s(4) + 'px ' + s(pad) + 'px';
+      legendEl.style.gap = s(8) + 'px';
       el.appendChild(legendEl);
     }
 
     // -- Scrollable list area --
     var listWrap = document.createElement('div');
-    listWrap.style.position    = 'absolute';
-    listWrap.style.left        = '0';
-    listWrap.style.right       = '0';
-    listWrap.style.bottom      = '0';
-    listWrap.style.overflowY   = 'auto';
+    listWrap.style.position = 'absolute';
+    listWrap.style.left = '0';
+    listWrap.style.right = '0';
+    listWrap.style.bottom = '0';
+    listWrap.style.overflowY = 'auto';
     listWrap.style.webkitOverflowScrolling = 'touch';
-    listWrap.style.paddingLeft   = s(pad) + 'px';
-    listWrap.style.paddingRight  = s(pad) + 'px';
-    listWrap.style.paddingTop    = s(pad) + 'px';
+    listWrap.style.paddingLeft = s(pad) + 'px';
+    listWrap.style.paddingRight = s(pad) + 'px';
+    listWrap.style.paddingTop = s(pad) + 'px';
     listWrap.style.paddingBottom = s(pad) + 'px';
-    listWrap.style.boxSizing     = 'border-box';
+    listWrap.style.boxSizing = 'border-box';
     el.appendChild(listWrap);
 
     var fade = document.createElement('div');
-    fade.style.position    = 'absolute';
-    fade.style.left        = '0';
-    fade.style.right       = '0';
-    fade.style.bottom      = '0';
-    fade.style.height      = s(56) + 'px';
+    fade.style.position = 'absolute';
+    fade.style.left = '0';
+    fade.style.right = '0';
+    fade.style.bottom = '0';
+    fade.style.height = s(56) + 'px';
     fade.style.pointerEvents = 'none';
-    fade.style.display     = 'none';
-    fade.style.background  = 'linear-gradient(180deg, rgba(0,0,0,0), ' + resolveColor(w.background || 'surface') + ' 85%)';
+    fade.style.display = 'none';
+    fade.style.background =
+      'linear-gradient(180deg, rgba(0,0,0,0), ' +
+      resolveColor(w.background || 'surface') +
+      ' 85%)';
     el.appendChild(fade);
 
     // -- Add button (shown if any list has allow_add: true) --
@@ -4285,18 +5133,18 @@
     }
     if (addableLists.length) {
       var addBtn = document.createElement('div');
-      addBtn.style.position   = 'absolute';
-      addBtn.style.bottom     = s(pad) + 'px';
-      addBtn.style.right      = s(pad) + 'px';
-      addBtn.style.zIndex     = '2';
-      addBtn.style.cursor     = 'pointer';
+      addBtn.style.position = 'absolute';
+      addBtn.style.bottom = s(pad) + 'px';
+      addBtn.style.right = s(pad) + 'px';
+      addBtn.style.zIndex = '2';
+      addBtn.style.cursor = 'pointer';
       addBtn.style.lineHeight = '1';
       var addIcon = document.createElement('span');
-      addIcon.className       = 'mdi mdi-plus-circle';
-      addIcon.style.fontSize  = s(56) + 'px';
-      addIcon.style.color     = resolveColor(w.accent || 'primary');
+      addIcon.className = 'mdi mdi-plus-circle';
+      addIcon.style.fontSize = s(56) + 'px';
+      addIcon.style.color = resolveColor(w.accent || 'primary');
       addBtn.appendChild(addIcon);
-      addBtn.addEventListener('click', function() {
+      addBtn.addEventListener('click', function () {
         openAddTaskModal(addableLists);
         resetReturnTimer();
       });
@@ -4304,9 +5152,15 @@
     }
 
     function updateOverflowFade() {
-      var hasOverflow = (listWrap.scrollHeight > (listWrap.clientHeight + 1));
-      if (!hasOverflow) { fade.style.display = 'none'; return; }
-      fade.style.display = (listWrap.scrollTop + listWrap.clientHeight >= listWrap.scrollHeight - 2) ? 'none' : 'block';
+      var hasOverflow = listWrap.scrollHeight > listWrap.clientHeight + 1;
+      if (!hasOverflow) {
+        fade.style.display = 'none';
+        return;
+      }
+      fade.style.display =
+        listWrap.scrollTop + listWrap.clientHeight >= listWrap.scrollHeight - 2
+          ? 'none'
+          : 'block';
     }
     listWrap.addEventListener('scroll', updateOverflowFade);
 
@@ -4319,8 +5173,8 @@
     function setEmpty(text) {
       listWrap.innerHTML = '';
       var msg = document.createElement('div');
-      msg.style.padding  = '0';
-      msg.style.color    = resolveColor(w.detail_color || 'text_muted');
+      msg.style.padding = '0';
+      msg.style.color = resolveColor(w.detail_color || 'text_muted');
       msg.style.fontSize = s(14) + 'px';
       setContent(msg, text);
       listWrap.appendChild(msg);
@@ -4332,41 +5186,46 @@
       if (!legendEl) return;
       legendEl.innerHTML = '';
       for (var i = 0; i < lists.length; i++) {
-        (function(cfg) {
-          var color      = resolveColor(cfg.color || 'primary');
-          var name       = cfg.name || cfg.entity.replace(/^todo\./, '').replace(/_/g, ' ');
+        (function (cfg) {
+          var color = resolveColor(cfg.color || 'primary');
+          var name =
+            cfg.name || cfg.entity.replace(/^todo\./, '').replace(/_/g, ' ');
           var isSelected = selectedListKey === cfg.entity;
 
           var btn = document.createElement('button');
           btn.type = 'button';
-          btn.style.display     = 'inline-flex';
-          btn.style.alignItems  = 'center';
-          btn.style.gap         = s(6) + 'px';
-          btn.style.padding     = s(3) + 'px ' + s(7) + 'px';
+          btn.style.display = 'inline-flex';
+          btn.style.alignItems = 'center';
+          btn.style.gap = s(6) + 'px';
+          btn.style.padding = s(3) + 'px ' + s(7) + 'px';
           btn.style.borderRadius = s(8) + 'px';
-          btn.style.border      = 'none';
-          btn.style.cursor      = 'pointer';
-          btn.style.fontSize    = s(12) + 'px';
-          btn.style.lineHeight  = '1';
-          btn.style.whiteSpace  = 'nowrap';
-          btn.style.color       = resolveColor(w.legend_color || w.detail_color || 'text_muted');
-          btn.style.background  = isSelected ? rgbaTask(color, 0.16) : 'transparent';
-          btn.style.opacity     = (selectedListKey && !isSelected) ? '0.55' : '1';
+          btn.style.border = 'none';
+          btn.style.cursor = 'pointer';
+          btn.style.fontSize = s(12) + 'px';
+          btn.style.lineHeight = '1';
+          btn.style.whiteSpace = 'nowrap';
+          btn.style.color = resolveColor(
+            w.legend_color || w.detail_color || 'text_muted',
+          );
+          btn.style.background = isSelected
+            ? rgbaTask(color, 0.16)
+            : 'transparent';
+          btn.style.opacity = selectedListKey && !isSelected ? '0.55' : '1';
 
           var swatch = document.createElement('span');
-          swatch.style.display      = 'inline-block';
-          swatch.style.width        = s(9) + 'px';
-          swatch.style.height       = s(9) + 'px';
+          swatch.style.display = 'inline-block';
+          swatch.style.width = s(9) + 'px';
+          swatch.style.height = s(9) + 'px';
           swatch.style.borderRadius = s(2) + 'px';
-          swatch.style.background   = color;
-          swatch.style.flexShrink   = '0';
+          swatch.style.background = color;
+          swatch.style.flexShrink = '0';
           btn.appendChild(swatch);
 
           var lbl = document.createElement('span');
           lbl.textContent = name;
           btn.appendChild(lbl);
 
-          btn.addEventListener('click', function() {
+          btn.addEventListener('click', function () {
             selectedListKey = isSelected ? null : cfg.entity;
             renderLegend();
             renderItems(getFiltered());
@@ -4382,7 +5241,8 @@
       if (!selectedListKey) return cachedItems;
       var out = [];
       for (var i = 0; i < cachedItems.length; i++) {
-        if (cachedItems[i]._entityId === selectedListKey) out.push(cachedItems[i]);
+        if (cachedItems[i]._entityId === selectedListKey)
+          out.push(cachedItems[i]);
       }
       return out;
     }
@@ -4391,10 +5251,14 @@
     // Normalise to a local-midnight Date, handling both "YYYY-MM-DD" and full ISO strings
     function parseDueDate(dueDateStr) {
       if (!dueDateStr) return null;
-      var dateOnly = dueDateStr.split('T')[0];   // strip time portion if present
+      var dateOnly = dueDateStr.split('T')[0]; // strip time portion if present
       var parts = dateOnly.split('-');
       if (parts.length < 3) return null;
-      return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      return new Date(
+        parseInt(parts[0], 10),
+        parseInt(parts[1], 10) - 1,
+        parseInt(parts[2], 10),
+      );
     }
 
     function isOverdue(dueDateStr) {
@@ -4416,18 +5280,25 @@
     // -- Render task items --
     function renderItems(items) {
       listWrap.innerHTML = '';
-      var titleSize  = s(16);
+      var titleSize = s(16);
       var detailSize = s(13);
-      var accentWidth  = s(w.accent_width || 4);
+      var accentWidth = s(w.accent_width || 4);
       var overdueColor = resolveColor(w.overdue_color || 'danger');
 
       var visible = [];
       for (var i = 0; i < items.length; i++) {
         var itemCfg = null;
         for (var ci = 0; ci < lists.length; ci++) {
-          if (lists[ci].entity === items[i]._entityId) { itemCfg = lists[ci]; break; }
+          if (lists[ci].entity === items[i]._entityId) {
+            itemCfg = lists[ci];
+            break;
+          }
         }
-        if (items[i].status === 'completed' && !(itemCfg && itemCfg.show_completed)) continue;
+        if (
+          items[i].status === 'completed' &&
+          !(itemCfg && itemCfg.show_completed)
+        )
+          continue;
         visible.push(items[i]);
       }
 
@@ -4437,49 +5308,59 @@
       }
 
       // Sort: overdue (oldest first), today, tomorrow, no due date, future (soonest first), completed
-      var today    = new Date(); today.setHours(0, 0, 0, 0);
-      var tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
-      var dayAfter = new Date(today); dayAfter.setDate(dayAfter.getDate() + 2);
+      var today = new Date();
+      today.setHours(0, 0, 0, 0);
+      var tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      var dayAfter = new Date(today);
+      dayAfter.setDate(dayAfter.getDate() + 2);
 
       function sortKey(item) {
         if (item.status === 'completed') return [5, 0];
         var due = parseDueDate(item.due);
-        if (!due)                      return [3, 0];
+        if (!due) return [3, 0];
         var t = due.getTime();
-        if (t < today.getTime())       return [0, t];   // overdue: oldest first
-        if (t < tomorrow.getTime())    return [1, t];   // today
-        if (t < dayAfter.getTime())    return [2, t];   // tomorrow
-        return [4, t];                                  // future: soonest first
+        if (t < today.getTime()) return [0, t]; // overdue: oldest first
+        if (t < tomorrow.getTime()) return [1, t]; // today
+        if (t < dayAfter.getTime()) return [2, t]; // tomorrow
+        return [4, t]; // future: soonest first
       }
 
-      visible.sort(function(a, b) {
-        var ka = sortKey(a), kb = sortKey(b);
-        return (ka[0] !== kb[0]) ? ka[0] - kb[0] : ka[1] - kb[1];
+      visible.sort(function (a, b) {
+        var ka = sortKey(a),
+          kb = sortKey(b);
+        return ka[0] !== kb[0] ? ka[0] - kb[0] : ka[1] - kb[1];
       });
 
       for (var j = 0; j < visible.length; j++) {
-        (function(item) {
+        (function (item) {
           var cfg = null;
           for (var k = 0; k < lists.length; k++) {
-            if (lists[k].entity === item._entityId) { cfg = lists[k]; break; }
+            if (lists[k].entity === item._entityId) {
+              cfg = lists[k];
+              break;
+            }
           }
           var accentColor = resolveColor((cfg && cfg.color) || 'primary');
-          var isComplete  = item.status === 'completed';
-          var overdue     = !isComplete && isOverdue(item.due);
+          var isComplete = item.status === 'completed';
+          var overdue = !isComplete && isOverdue(item.due);
 
           var card = document.createElement('div');
-          card.style.display       = 'flex';
-          card.style.alignItems    = 'stretch';
-          card.style.marginBottom  = s(6) + 'px';
-          card.style.background    = resolveColor(w.event_background || 'surface2');
-          card.style.borderRadius  = s((w.event_radius !== undefined ? w.event_radius : 8)) + 'px';
-          card.style.overflow      = 'hidden';
+          card.style.display = 'flex';
+          card.style.alignItems = 'stretch';
+          card.style.marginBottom = s(6) + 'px';
+          card.style.background = resolveColor(
+            w.event_background || 'surface2',
+          );
+          card.style.borderRadius =
+            s(w.event_radius !== undefined ? w.event_radius : 8) + 'px';
+          card.style.overflow = 'hidden';
           var listEditable = cfg && cfg.editable === true;
           if (isComplete) card.style.opacity = '0.5';
           if (listEditable && !isComplete) card.style.cursor = 'pointer';
 
           var bar = document.createElement('div');
-          bar.style.width      = accentWidth + 'px';
+          bar.style.width = accentWidth + 'px';
           bar.style.background = accentColor;
           bar.style.flexShrink = '0';
           card.appendChild(bar);
@@ -4487,64 +5368,82 @@
           // Checkbox column (editable only)
           if (listEditable) {
             var checkCol = document.createElement('div');
-            checkCol.style.display     = 'flex';
-            checkCol.style.alignItems  = 'center';
-            checkCol.style.padding     = '0 ' + s(8) + 'px';
-            checkCol.style.flexShrink  = '0';
+            checkCol.style.display = 'flex';
+            checkCol.style.alignItems = 'center';
+            checkCol.style.padding = '0 ' + s(8) + 'px';
+            checkCol.style.flexShrink = '0';
             var checkIcon = document.createElement('span');
-            checkIcon.className = isComplete ? 'mdi mdi-checkbox-marked-circle' : 'mdi mdi-checkbox-blank-circle-outline';
+            checkIcon.className = isComplete
+              ? 'mdi mdi-checkbox-marked-circle'
+              : 'mdi mdi-checkbox-blank-circle-outline';
             checkIcon.style.fontSize = titleSize + 'px';
-            checkIcon.style.color    = isComplete ? accentColor : resolveColor(w.detail_color || 'text_muted');
+            checkIcon.style.color = isComplete
+              ? accentColor
+              : resolveColor(w.detail_color || 'text_muted');
             checkCol.appendChild(checkIcon);
             card.appendChild(checkCol);
           }
 
           var content = document.createElement('div');
-          content.style.flex     = '1';
-          content.style.padding  = s(10) + 'px ' + s(12) + 'px ' + s(10) + 'px ' + (listEditable ? s(4) + 'px' : s(12) + 'px');
+          content.style.flex = '1';
+          content.style.padding =
+            s(10) +
+            'px ' +
+            s(12) +
+            'px ' +
+            s(10) +
+            'px ' +
+            (listEditable ? s(4) + 'px' : s(12) + 'px');
           content.style.minWidth = '0';
           card.appendChild(content);
 
           var nameEl = document.createElement('div');
-          nameEl.style.fontSize     = titleSize + 'px';
-          nameEl.style.lineHeight   = '1.2';
-          nameEl.style.color        = resolveColor(w.title_color || 'text');
-          nameEl.style.overflow     = 'hidden';
+          nameEl.style.fontSize = titleSize + 'px';
+          nameEl.style.lineHeight = '1.2';
+          nameEl.style.color = resolveColor(w.title_color || 'text');
+          nameEl.style.overflow = 'hidden';
           nameEl.style.textOverflow = 'ellipsis';
-          nameEl.style.whiteSpace   = 'nowrap';
+          nameEl.style.whiteSpace = 'nowrap';
           if (isComplete) nameEl.style.textDecoration = 'line-through';
           setContent(nameEl, item.summary || '(No title)');
           content.appendChild(nameEl);
 
           if (item.due) {
             var dueEl = document.createElement('div');
-            dueEl.style.fontSize  = detailSize + 'px';
+            dueEl.style.fontSize = detailSize + 'px';
             dueEl.style.marginTop = s(4) + 'px';
-            dueEl.style.color     = overdue ? overdueColor : resolveColor(w.detail_color || 'text_muted');
-            setContent(dueEl, overdue ? '[mdi:alert-circle-outline]\u00a0' + formatDue(item.due) : formatDue(item.due));
+            dueEl.style.color = overdue
+              ? overdueColor
+              : resolveColor(w.detail_color || 'text_muted');
+            setContent(
+              dueEl,
+              overdue
+                ? '[mdi:alert-circle-outline]\u00a0' + formatDue(item.due)
+                : formatDue(item.due),
+            );
             content.appendChild(dueEl);
           }
 
           if (listEditable && !isComplete) {
-            var clickHandler = function() {
-              openTaskConfirm(item, function() {
+            var clickHandler = function () {
+              openTaskConfirm(item, function () {
                 // Optimistic UI update - reflect completion immediately
                 if (checkIcon) {
-                  checkIcon.className   = 'mdi mdi-checkbox-marked-circle';
+                  checkIcon.className = 'mdi mdi-checkbox-marked-circle';
                   checkIcon.style.color = accentColor;
                 }
                 nameEl.style.textDecoration = 'line-through';
-                card.style.opacity  = '0.5';
-                card.style.cursor   = 'default';
+                card.style.opacity = '0.5';
+                card.style.cursor = 'default';
                 card.removeEventListener('click', clickHandler);
 
                 wsSend({
-                  id:           msgId++,
-                  type:         'call_service',
-                  domain:       'todo',
-                  service:      'update_item',
-                  target:       { entity_id: item._entityId },
-                  service_data: { item: item.uid, status: 'completed' }
+                  id: msgId++,
+                  type: 'call_service',
+                  domain: 'todo',
+                  service: 'update_item',
+                  target: { entity_id: item._entityId },
+                  service_data: { item: item.uid, status: 'completed' },
                 });
                 debouncedRefresh();
               });
@@ -4564,28 +5463,28 @@
       var selectedList = targetLists[0];
 
       var overlay = document.createElement('div');
-      overlay.style.position       = 'fixed';
-      overlay.style.top            = '0';
-      overlay.style.left           = '0';
-      overlay.style.right          = '0';
-      overlay.style.bottom         = '0';
-      overlay.style.background     = 'rgba(0,0,0,0.65)';
-      overlay.style.zIndex         = '9999';
-      overlay.style.display        = 'flex';
-      overlay.style.alignItems     = 'center';
+      overlay.style.position = 'fixed';
+      overlay.style.top = '0';
+      overlay.style.left = '0';
+      overlay.style.right = '0';
+      overlay.style.bottom = '0';
+      overlay.style.background = 'rgba(0,0,0,0.65)';
+      overlay.style.zIndex = '9999';
+      overlay.style.display = 'flex';
+      overlay.style.alignItems = 'center';
       overlay.style.justifyContent = 'center';
 
       var box = document.createElement('div');
-      box.style.background   = resolveColor(w.background || 'surface');
+      box.style.background = resolveColor(w.background || 'surface');
       box.style.borderRadius = s(12) + 'px';
-      box.style.padding      = s(24) + 'px';
-      box.style.maxWidth     = s(380) + 'px';
-      box.style.width        = '85%';
+      box.style.padding = s(24) + 'px';
+      box.style.maxWidth = s(380) + 'px';
+      box.style.width = '85%';
       overlay.appendChild(box);
 
       var heading = document.createElement('div');
-      heading.style.fontSize     = s(16) + 'px';
-      heading.style.color        = resolveColor(w.color || 'text');
+      heading.style.fontSize = s(16) + 'px';
+      heading.style.color = resolveColor(w.color || 'text');
       heading.style.marginBottom = s(16) + 'px';
       setContent(heading, '[mdi:plus-circle]\u00a0Add task');
       box.appendChild(heading);
@@ -4593,50 +5492,56 @@
       // List picker - only shown when more than one addable list
       if (targetLists.length > 1) {
         var pickerRow = document.createElement('div');
-        pickerRow.style.display        = 'flex';
-        pickerRow.style.flexWrap       = 'wrap';
-        pickerRow.style.gap            = s(6) + 'px';
-        pickerRow.style.marginBottom   = s(14) + 'px';
+        pickerRow.style.display = 'flex';
+        pickerRow.style.flexWrap = 'wrap';
+        pickerRow.style.gap = s(6) + 'px';
+        pickerRow.style.marginBottom = s(14) + 'px';
         box.appendChild(pickerRow);
 
         for (var pi = 0; pi < targetLists.length; pi++) {
-          (function(cfg) {
+          (function (cfg) {
             var color = resolveColor(cfg.color || 'primary');
-            var name  = cfg.name || cfg.entity.replace(/^todo\./, '').replace(/_/g, ' ');
-            var pill  = document.createElement('div');
-            pill.style.display      = 'flex';
-            pill.style.alignItems   = 'center';
-            pill.style.gap          = s(5) + 'px';
-            pill.style.padding      = s(4) + 'px ' + s(10) + 'px';
+            var name =
+              cfg.name || cfg.entity.replace(/^todo\./, '').replace(/_/g, ' ');
+            var pill = document.createElement('div');
+            pill.style.display = 'flex';
+            pill.style.alignItems = 'center';
+            pill.style.gap = s(5) + 'px';
+            pill.style.padding = s(4) + 'px ' + s(10) + 'px';
             pill.style.borderRadius = s(20) + 'px';
-            pill.style.cursor       = 'pointer';
-            pill.style.fontSize     = s(13) + 'px';
-            pill.style.border       = '2px solid ' + color;
-            pill.style.color        = resolveColor(w.color || 'text');
-            pill.style.background   = (selectedList === cfg) ? color : 'transparent';
+            pill.style.cursor = 'pointer';
+            pill.style.fontSize = s(13) + 'px';
+            pill.style.border = '2px solid ' + color;
+            pill.style.color = resolveColor(w.color || 'text');
+            pill.style.background =
+              selectedList === cfg ? color : 'transparent';
             pill._listCfg = cfg;
 
             var dot = document.createElement('span');
-            dot.style.display      = 'inline-block';
-            dot.style.width        = s(7) + 'px';
-            dot.style.height       = s(7) + 'px';
+            dot.style.display = 'inline-block';
+            dot.style.width = s(7) + 'px';
+            dot.style.height = s(7) + 'px';
             dot.style.borderRadius = '50%';
-            dot.style.background   = (selectedList === cfg) ? resolveColor(w.background || 'surface') : color;
-            dot.style.flexShrink   = '0';
+            dot.style.background =
+              selectedList === cfg
+                ? resolveColor(w.background || 'surface')
+                : color;
+            dot.style.flexShrink = '0';
             pill.appendChild(dot);
 
             var pillLabel = document.createElement('span');
             pillLabel.textContent = name;
             pill.appendChild(pillLabel);
 
-            pill.addEventListener('click', function() {
+            pill.addEventListener('click', function () {
               selectedList = cfg;
               var pills = pickerRow.querySelectorAll('div');
               for (var pj = 0; pj < pills.length; pj++) {
                 var pc = pills[pj]._listCfg;
-                var pc2 = resolveColor(pc && pc.color || 'primary');
-                pills[pj].style.background = (pc === cfg) ? pc2 : 'transparent';
-                pills[pj].querySelector('span').style.background = (pc === cfg) ? resolveColor(w.background || 'surface') : pc2;
+                var pc2 = resolveColor((pc && pc.color) || 'primary');
+                pills[pj].style.background = pc === cfg ? pc2 : 'transparent';
+                pills[pj].querySelector('span').style.background =
+                  pc === cfg ? resolveColor(w.background || 'surface') : pc2;
               }
             });
             pickerRow.appendChild(pill);
@@ -4647,83 +5552,95 @@
       // Shared label style helper
       function makeLabel(text) {
         var lbl = document.createElement('div');
-        lbl.style.fontSize     = s(12) + 'px';
-        lbl.style.color        = resolveColor(w.color_dim || 'text_muted');
+        lbl.style.fontSize = s(12) + 'px';
+        lbl.style.color = resolveColor(w.color_dim || 'text_muted');
         lbl.style.marginBottom = s(4) + 'px';
-        lbl.textContent        = text;
+        lbl.textContent = text;
         return lbl;
       }
 
       // Task name input
       box.appendChild(makeLabel('Task name'));
       var input = document.createElement('input');
-      input.type        = 'text';
+      input.type = 'text';
       input.placeholder = 'Enter task name';
-      input.style.width        = '100%';
-      input.style.boxSizing    = 'border-box';
-      input.style.padding      = s(10) + 'px ' + s(12) + 'px';
+      input.style.width = '100%';
+      input.style.boxSizing = 'border-box';
+      input.style.padding = s(10) + 'px ' + s(12) + 'px';
       input.style.borderRadius = s(6) + 'px';
-      input.style.border       = '1px solid ' + resolveColor('surface2');
-      input.style.background   = resolveColor('surface2');
-      input.style.color        = resolveColor(w.color || 'text');
-      input.style.fontSize     = s(15) + 'px';
-      input.style.outline      = 'none';
+      input.style.border = '1px solid ' + resolveColor('surface2');
+      input.style.background = resolveColor('surface2');
+      input.style.color = resolveColor(w.color || 'text');
+      input.style.fontSize = s(15) + 'px';
+      input.style.outline = 'none';
       input.style.marginBottom = s(12) + 'px';
       box.appendChild(input);
 
       // Due date input
       box.appendChild(makeLabel('Due date (optional)'));
       var dateInput = document.createElement('input');
-      dateInput.type        = 'date';
+      dateInput.type = 'date';
       dateInput.placeholder = 'YYYY-MM-DD';
-      dateInput.style.width        = '100%';
-      dateInput.style.boxSizing    = 'border-box';
-      dateInput.style.padding      = s(10) + 'px ' + s(12) + 'px';
+      dateInput.style.width = '100%';
+      dateInput.style.boxSizing = 'border-box';
+      dateInput.style.padding = s(10) + 'px ' + s(12) + 'px';
       dateInput.style.borderRadius = s(6) + 'px';
-      dateInput.style.border       = '1px solid ' + resolveColor('surface2');
-      dateInput.style.background   = resolveColor('surface2');
-      dateInput.style.color        = resolveColor(w.color || 'text');
-      dateInput.style.fontSize     = s(15) + 'px';
-      dateInput.style.outline      = 'none';
+      dateInput.style.border = '1px solid ' + resolveColor('surface2');
+      dateInput.style.background = resolveColor('surface2');
+      dateInput.style.color = resolveColor(w.color || 'text');
+      dateInput.style.fontSize = s(15) + 'px';
+      dateInput.style.outline = 'none';
       dateInput.style.marginBottom = s(16) + 'px';
       box.appendChild(dateInput);
 
       var btnRow = document.createElement('div');
-      btnRow.style.display        = 'flex';
-      btnRow.style.gap            = s(12) + 'px';
+      btnRow.style.display = 'flex';
+      btnRow.style.gap = s(12) + 'px';
       btnRow.style.justifyContent = 'flex-end';
       box.appendChild(btnRow);
 
       var cancelBtn = document.createElement('div');
-      cancelBtn.style.padding      = s(8) + 'px ' + s(20) + 'px';
+      cancelBtn.style.padding = s(8) + 'px ' + s(20) + 'px';
       cancelBtn.style.borderRadius = s(6) + 'px';
-      cancelBtn.style.background   = resolveColor('surface2');
-      cancelBtn.style.color        = resolveColor('text');
-      cancelBtn.style.fontSize     = s(14) + 'px';
-      cancelBtn.style.cursor       = 'pointer';
+      cancelBtn.style.background = resolveColor('surface2');
+      cancelBtn.style.color = resolveColor('text');
+      cancelBtn.style.fontSize = s(14) + 'px';
+      cancelBtn.style.cursor = 'pointer';
       setContent(cancelBtn, 'Cancel');
-      cancelBtn.addEventListener('click', function() { document.body.removeChild(overlay); });
+      cancelBtn.addEventListener('click', function () {
+        document.body.removeChild(overlay);
+      });
       btnRow.appendChild(cancelBtn);
 
       var saveBtn = document.createElement('div');
-      saveBtn.style.padding      = s(8) + 'px ' + s(20) + 'px';
+      saveBtn.style.padding = s(8) + 'px ' + s(20) + 'px';
       saveBtn.style.borderRadius = s(6) + 'px';
-      saveBtn.style.background   = resolveColor('primary');
-      saveBtn.style.color        = resolveColor('background');
-      saveBtn.style.fontSize     = s(14) + 'px';
-      saveBtn.style.cursor       = 'pointer';
+      saveBtn.style.background = resolveColor('primary');
+      saveBtn.style.color = resolveColor('background');
+      saveBtn.style.fontSize = s(14) + 'px';
+      saveBtn.style.cursor = 'pointer';
       setContent(saveBtn, '[mdi:check]\u00a0Save');
       btnRow.appendChild(saveBtn);
 
       function doSave() {
         var name = input.value.replace(/^\s+|\s+$/g, '');
-        if (!name) { input.style.border = '1px solid ' + resolveColor(w.overdue_color || 'danger'); return; }
+        if (!name) {
+          input.style.border =
+            '1px solid ' + resolveColor(w.overdue_color || 'danger');
+          return;
+        }
         document.body.removeChild(overlay);
 
         var due = dateInput.value || null;
 
         // Optimistic: add temp item to cache and re-render immediately
-        var tempItem = { summary: name, status: 'needs_action', uid: 'temp_' + Date.now(), _entityId: selectedList.entity, due: due };
+        var tempItem = {
+          summary: name,
+          status: 'needs_action',
+          uid: 'temp_' + Date.now(),
+          _entityId: selectedList.entity,
+          due: due,
+        };
         cachedItems.push(tempItem);
         renderLegend();
         renderItems(getFiltered());
@@ -4731,99 +5648,105 @@
         var svcData = { item: name };
         if (due) svcData.due_date = due;
         wsSend({
-          id:           msgId++,
-          type:         'call_service',
-          domain:       'todo',
-          service:      'add_item',
-          target:       { entity_id: selectedList.entity },
-          service_data: svcData
+          id: msgId++,
+          type: 'call_service',
+          domain: 'todo',
+          service: 'add_item',
+          target: { entity_id: selectedList.entity },
+          service_data: svcData,
         });
         debouncedRefresh();
       }
 
       saveBtn.addEventListener('click', doSave);
-      input.addEventListener('keydown', function(e) { if (e.key === 'Enter') doSave(); });
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') doSave();
+      });
 
-      overlay.addEventListener('click', function(e) {
+      overlay.addEventListener('click', function (e) {
         if (e.target === overlay) document.body.removeChild(overlay);
       });
 
       document.body.appendChild(overlay);
-      setTimeout(function() { input.focus(); }, 50);
+      setTimeout(function () {
+        input.focus();
+      }, 50);
     }
 
     // -- Confirmation modal --
     function openTaskConfirm(item, onConfirm) {
       var overlay = document.createElement('div');
-      overlay.style.position       = 'fixed';
-      overlay.style.top            = '0';
-      overlay.style.left           = '0';
-      overlay.style.right          = '0';
-      overlay.style.bottom         = '0';
-      overlay.style.background     = 'rgba(0,0,0,0.65)';
-      overlay.style.zIndex         = '9999';
-      overlay.style.display        = 'flex';
-      overlay.style.alignItems     = 'center';
+      overlay.style.position = 'fixed';
+      overlay.style.top = '0';
+      overlay.style.left = '0';
+      overlay.style.right = '0';
+      overlay.style.bottom = '0';
+      overlay.style.background = 'rgba(0,0,0,0.65)';
+      overlay.style.zIndex = '9999';
+      overlay.style.display = 'flex';
+      overlay.style.alignItems = 'center';
       overlay.style.justifyContent = 'center';
 
       var box = document.createElement('div');
-      box.style.background   = resolveColor(w.background || 'surface');
+      box.style.background = resolveColor(w.background || 'surface');
       box.style.borderRadius = s(12) + 'px';
-      box.style.padding      = s(24) + 'px';
-      box.style.maxWidth     = s(360) + 'px';
-      box.style.width        = '80%';
-      box.style.textAlign    = 'center';
+      box.style.padding = s(24) + 'px';
+      box.style.maxWidth = s(360) + 'px';
+      box.style.width = '80%';
+      box.style.textAlign = 'center';
       overlay.appendChild(box);
 
       var prompt = document.createElement('div');
-      prompt.style.fontSize     = s(16) + 'px';
-      prompt.style.color        = resolveColor(w.color || 'text');
+      prompt.style.fontSize = s(16) + 'px';
+      prompt.style.color = resolveColor(w.color || 'text');
       prompt.style.marginBottom = s(8) + 'px';
       setContent(prompt, 'Mark as complete?');
       box.appendChild(prompt);
 
       var taskName = document.createElement('div');
-      taskName.style.fontSize     = s(14) + 'px';
-      taskName.style.color        = resolveColor(w.color_dim || 'text_muted');
+      taskName.style.fontSize = s(14) + 'px';
+      taskName.style.color = resolveColor(w.color_dim || 'text_muted');
       taskName.style.marginBottom = s(20) + 'px';
-      taskName.style.overflow     = 'hidden';
+      taskName.style.overflow = 'hidden';
       taskName.style.textOverflow = 'ellipsis';
-      taskName.style.whiteSpace   = 'nowrap';
-      taskName.textContent        = item.summary || '';
+      taskName.style.whiteSpace = 'nowrap';
+      taskName.textContent = item.summary || '';
       box.appendChild(taskName);
 
       var btnRow = document.createElement('div');
-      btnRow.style.display        = 'flex';
-      btnRow.style.gap            = s(12) + 'px';
+      btnRow.style.display = 'flex';
+      btnRow.style.gap = s(12) + 'px';
       btnRow.style.justifyContent = 'center';
       box.appendChild(btnRow);
 
       var cancelBtn = document.createElement('div');
-      cancelBtn.style.padding      = s(8) + 'px ' + s(20) + 'px';
+      cancelBtn.style.padding = s(8) + 'px ' + s(20) + 'px';
       cancelBtn.style.borderRadius = s(6) + 'px';
-      cancelBtn.style.background   = resolveColor('surface2');
-      cancelBtn.style.color        = resolveColor('text');
-      cancelBtn.style.fontSize     = s(14) + 'px';
-      cancelBtn.style.cursor       = 'pointer';
+      cancelBtn.style.background = resolveColor('surface2');
+      cancelBtn.style.color = resolveColor('text');
+      cancelBtn.style.fontSize = s(14) + 'px';
+      cancelBtn.style.cursor = 'pointer';
       setContent(cancelBtn, 'Cancel');
-      cancelBtn.addEventListener('click', function() { document.body.removeChild(overlay); });
+      cancelBtn.addEventListener('click', function () {
+        document.body.removeChild(overlay);
+      });
       btnRow.appendChild(cancelBtn);
 
       var confirmBtn = document.createElement('div');
-      confirmBtn.style.padding      = s(8) + 'px ' + s(20) + 'px';
+      confirmBtn.style.padding = s(8) + 'px ' + s(20) + 'px';
       confirmBtn.style.borderRadius = s(6) + 'px';
-      confirmBtn.style.background   = resolveColor('primary');
-      confirmBtn.style.color        = resolveColor('background');
-      confirmBtn.style.fontSize     = s(14) + 'px';
-      confirmBtn.style.cursor       = 'pointer';
+      confirmBtn.style.background = resolveColor('primary');
+      confirmBtn.style.color = resolveColor('background');
+      confirmBtn.style.fontSize = s(14) + 'px';
+      confirmBtn.style.cursor = 'pointer';
       setContent(confirmBtn, '[mdi:check]\u00a0Done');
-      confirmBtn.addEventListener('click', function() {
+      confirmBtn.addEventListener('click', function () {
         document.body.removeChild(overlay);
         onConfirm();
       });
       btnRow.appendChild(confirmBtn);
 
-      overlay.addEventListener('click', function(e) {
+      overlay.addEventListener('click', function (e) {
         if (e.target === overlay) document.body.removeChild(overlay);
       });
 
@@ -4832,40 +5755,51 @@
 
     // -- Fetch items for a single list via WS todo.get_items --
     function fetchListItems(entityId, cb) {
-      if (!ws || ws.readyState !== 1) { cb(null); return; }
+      if (!ws || ws.readyState !== 1) {
+        cb(null);
+        return;
+      }
       var id = msgId++;
-      pendingRequests[id] = function(result) {
-        if (!result) { cb([]); return; }
+      pendingRequests[id] = function (result) {
+        if (!result) {
+          cb([]);
+          return;
+        }
         // call_service with return_response:true wraps service data under result.response
-        var response = (result.response !== undefined) ? result.response : result;
-        var data     = response[entityId] || response;
-        var items    = (data && isArray(data.items)) ? data.items : [];
+        var response = result.response !== undefined ? result.response : result;
+        var data = response[entityId] || response;
+        var items = data && isArray(data.items) ? data.items : [];
         cb(items);
       };
       wsSend({
-        id:              id,
-        type:            'call_service',
-        domain:          'todo',
-        service:         'get_items',
-        target:          { entity_id: entityId },
-        service_data:    { status: ['needs_action', 'completed'] },
-        return_response: true
+        id: id,
+        type: 'call_service',
+        domain: 'todo',
+        service: 'get_items',
+        target: { entity_id: entityId },
+        service_data: { status: ['needs_action', 'completed'] },
+        return_response: true,
       });
     }
 
     // -- Refresh: fetch all lists, merge, render --
     function refreshTasks() {
       if (!active) return;
-      if (!lists.length) { setEmpty('No lists configured'); return; }
+      if (!lists.length) {
+        setEmpty('No lists configured');
+        return;
+      }
       if (!ws || ws.readyState !== 1) {
-        setTimeout(function() { if (active) refreshTasks(); }, 2000);
+        setTimeout(function () {
+          if (active) refreshTasks();
+        }, 2000);
         return;
       }
       var pending = lists.length;
-      var merged  = [];
+      var merged = [];
       for (var i = 0; i < lists.length; i++) {
-        (function(cfg) {
-          fetchListItems(cfg.entity, function(items) {
+        (function (cfg) {
+          fetchListItems(cfg.entity, function (items) {
             if (items) {
               for (var j = 0; j < items.length; j++) {
                 items[j]._entityId = cfg.entity;
@@ -4885,8 +5819,8 @@
 
     // Subscribe to each todo entity: refresh when item count changes
     for (var li = 0; li < lists.length; li++) {
-      (function(entityId) {
-        registerEntityCallback(entityId, function() {
+      (function (entityId) {
+        registerEntityCallback(entityId, function () {
           if (active) refreshTasks();
         });
       })(lists[li].entity);
@@ -4895,15 +5829,29 @@
     var pendingRefresh = null;
     function debouncedRefresh() {
       if (pendingRefresh) clearTimeout(pendingRefresh);
-      pendingRefresh = setTimeout(function() { pendingRefresh = null; if (active) refreshTasks(); }, 10000);
+      pendingRefresh = setTimeout(function () {
+        pendingRefresh = null;
+        if (active) refreshTasks();
+      }, 10000);
     }
 
-    var timerRef = { id: null, stop: function() { active = false; if (pendingRefresh) { clearTimeout(pendingRefresh); pendingRefresh = null; } } };
+    var timerRef = {
+      id: null,
+      stop: function () {
+        active = false;
+        if (pendingRefresh) {
+          clearTimeout(pendingRefresh);
+          pendingRefresh = null;
+        }
+      },
+    };
     activePageTimers.push(timerRef);
 
     setEmpty('Loading...');
     refreshTasks();
-    var timer = setInterval(function() { if (active) refreshTasks(); }, refreshSec * 1000);
+    var timer = setInterval(function () {
+      if (active) refreshTasks();
+    }, refreshSec * 1000);
     timerRef.id = timer;
   }
 
@@ -4933,20 +5881,20 @@
     var ch = config.device.canvas.height;
 
     // Override element to full canvas - line points are in canvas coordinate space
-    el.style.left        = '0';
-    el.style.top         = '0';
-    el.style.width       = cw + 'px';
-    el.style.height      = ch + 'px';
+    el.style.left = '0';
+    el.style.top = '0';
+    el.style.width = cw + 'px';
+    el.style.height = ch + 'px';
     el.style.pointerEvents = 'none';
-    el.style.border      = 'none';
-    el.style.background  = 'transparent';
+    el.style.border = 'none';
+    el.style.background = 'transparent';
 
     var svg = document.createElementNS(svgNS, 'svg');
-    svg.setAttribute('width',  cw);
+    svg.setAttribute('width', cw);
     svg.setAttribute('height', ch);
     svg.style.position = 'absolute';
-    svg.style.left     = '0';
-    svg.style.top      = '0';
+    svg.style.left = '0';
+    svg.style.top = '0';
     svg.style.overflow = 'visible';
     el.appendChild(svg);
 
@@ -4955,7 +5903,8 @@
     function buildPts() {
       var pts = [{ x: w.start_x, y: w.start_y }];
       if (w.waypoints) {
-        for (var wi = 0; wi < w.waypoints.length; wi++) pts.push(w.waypoints[wi]);
+        for (var wi = 0; wi < w.waypoints.length; wi++)
+          pts.push(w.waypoints[wi]);
       }
       pts.push({ x: w.end_x, y: w.end_y });
       return pts;
@@ -4966,42 +5915,62 @@
       var d, ii;
       if (!r || r <= 0 || pts.length === 2) {
         d = 'M ' + pts[0].x + ' ' + pts[0].y;
-        for (ii = 1; ii < pts.length; ii++) d += ' L ' + pts[ii].x + ' ' + pts[ii].y;
+        for (ii = 1; ii < pts.length; ii++)
+          d += ' L ' + pts[ii].x + ' ' + pts[ii].y;
         return d;
       }
       d = 'M ' + pts[0].x + ' ' + pts[0].y;
       for (ii = 1; ii < pts.length - 1; ii++) {
-        var prev = pts[ii - 1], curr = pts[ii], next = pts[ii + 1];
-        var cr  = curr.radius !== undefined ? curr.radius : r;
-        var d1x = curr.x - prev.x, d1y = curr.y - prev.y;
-        var d2x = next.x - curr.x, d2y = next.y - curr.y;
-        var l1  = Math.sqrt(d1x * d1x + d1y * d1y);
-        var l2  = Math.sqrt(d2x * d2x + d2y * d2y);
-        if (!l1 || !l2) { d += ' L ' + curr.x + ' ' + curr.y; continue; }
-        var rc  = Math.min(cr, l1 / 2, l2 / 2);
-        var bx  = (curr.x - (d1x / l1) * rc).toFixed(2);
-        var by  = (curr.y - (d1y / l1) * rc).toFixed(2);
-        var ax  = (curr.x + (d2x / l2) * rc).toFixed(2);
-        var ay  = (curr.y + (d2y / l2) * rc).toFixed(2);
-        d += ' L ' + bx + ' ' + by + ' Q ' + curr.x + ' ' + curr.y + ' ' + ax + ' ' + ay;
+        var prev = pts[ii - 1],
+          curr = pts[ii],
+          next = pts[ii + 1];
+        var cr = curr.radius !== undefined ? curr.radius : r;
+        var d1x = curr.x - prev.x,
+          d1y = curr.y - prev.y;
+        var d2x = next.x - curr.x,
+          d2y = next.y - curr.y;
+        var l1 = Math.sqrt(d1x * d1x + d1y * d1y);
+        var l2 = Math.sqrt(d2x * d2x + d2y * d2y);
+        if (!l1 || !l2) {
+          d += ' L ' + curr.x + ' ' + curr.y;
+          continue;
+        }
+        var rc = Math.min(cr, l1 / 2, l2 / 2);
+        var bx = (curr.x - (d1x / l1) * rc).toFixed(2);
+        var by = (curr.y - (d1y / l1) * rc).toFixed(2);
+        var ax = (curr.x + (d2x / l2) * rc).toFixed(2);
+        var ay = (curr.y + (d2y / l2) * rc).toFixed(2);
+        d +=
+          ' L ' +
+          bx +
+          ' ' +
+          by +
+          ' Q ' +
+          curr.x +
+          ' ' +
+          curr.y +
+          ' ' +
+          ax +
+          ' ' +
+          ay;
       }
       return d + ' L ' + pts[pts.length - 1].x + ' ' + pts[pts.length - 1].y;
     }
 
-    var linePts  = buildPts();
+    var linePts = buildPts();
     var pathData = buildPathData(linePts, w.radius || 0);
 
     // ---- SVG defs (arrowhead markers) ---------------------------------
 
-    var defs      = document.createElementNS(svgNS, 'defs');
+    var defs = document.createElementNS(svgNS, 'defs');
     svg.appendChild(defs);
     var markerEls = [];
-    var mid       = 'lm-' + (w.id || 'l');
+    var mid = 'lm-' + (w.id || 'l');
 
     function createArrowMarker(id, color) {
       var m = document.createElementNS(svgNS, 'marker');
       m.setAttribute('id', id);
-      m.setAttribute('markerWidth',  '6');
+      m.setAttribute('markerWidth', '6');
       m.setAttribute('markerHeight', '6');
       m.setAttribute('refX', '5');
       m.setAttribute('refY', '3');
@@ -5016,7 +5985,8 @@
 
     function applyArrows(arrow, color) {
       for (var mi = 0; mi < markerEls.length; mi++) {
-        if (markerEls[mi].parentNode) markerEls[mi].parentNode.removeChild(markerEls[mi]);
+        if (markerEls[mi].parentNode)
+          markerEls[mi].parentNode.removeChild(markerEls[mi]);
       }
       markerEls = [];
       trackPath.removeAttribute('marker-end');
@@ -5039,14 +6009,14 @@
 
     // ---- Track path ---------------------------------------------------
 
-    var thickness  = w.thickness !== undefined ? w.thickness : 2;
+    var thickness = w.thickness !== undefined ? w.thickness : 2;
     var trackColor = resolveColor(w.color || 'surface2');
 
     var trackPath = document.createElementNS(svgNS, 'path');
-    trackPath.setAttribute('d',              pathData);
-    trackPath.setAttribute('fill',           'none');
-    trackPath.setAttribute('stroke',         trackColor);
-    trackPath.setAttribute('stroke-width',   thickness);
+    trackPath.setAttribute('d', pathData);
+    trackPath.setAttribute('fill', 'none');
+    trackPath.setAttribute('stroke', trackColor);
+    trackPath.setAttribute('stroke-width', thickness);
     trackPath.setAttribute('stroke-linecap', 'round');
     svg.appendChild(trackPath);
 
@@ -5054,48 +6024,61 @@
 
     // ---- Animation config ---------------------------------------------
 
-    var pathLength = trackPath.getTotalLength ? trackPath.getTotalLength() : 300;
+    var pathLength = trackPath.getTotalLength
+      ? trackPath.getTotalLength()
+      : 300;
 
-    var dotSize           = w.dot_size     !== undefined ? w.dot_size     : 6;
-    var dotLength         = w.dot_length   !== undefined ? w.dot_length   : 1;  // 1 = round, >1 = dash/pill
-    var dotSpacing        = w.dot_spacing  !== undefined ? w.dot_spacing  : 30;
+    var dotSize = w.dot_size !== undefined ? w.dot_size : 6;
+    var dotLength = w.dot_length !== undefined ? w.dot_length : 1; // 1 = round, >1 = dash/pill
+    var dotSpacing = w.dot_spacing !== undefined ? w.dot_spacing : 30;
     var currentDotSpacing = dotSpacing; // mutable - updated by overrides
-    var dotColor          = resolveColor(w.dot_color || w.color || 'primary');
-    var inactOpac         = w.inactive_opacity !== undefined ? w.inactive_opacity : 0.25;
+    var dotColor = resolveColor(w.dot_color || w.color || 'primary');
+    var inactOpac =
+      w.inactive_opacity !== undefined ? w.inactive_opacity : 0.25;
 
     // Normalise effect name. 'comet' alone = comet_medium. 'dash' = dot with long dot_length.
-    var effect = w.effect !== undefined ? w.effect : (w.entity ? 'dot' : 'none');
+    var effect = w.effect !== undefined ? w.effect : w.entity ? 'dot' : 'none';
     if (effect === 'comet') effect = 'comet_medium';
-    if (effect === 'dash')  effect = 'dot';
+    if (effect === 'dash') effect = 'dot';
 
     // Comet trail length derived from dot_size so it looks consistent across lines of any length
-    var trailLen = dotSize * (effect === 'comet_short' ? 4 : effect === 'comet_long' ? 20 : 10);
+    var trailLen =
+      dotSize *
+      (effect === 'comet_short' ? 4 : effect === 'comet_long' ? 20 : 10);
     var trailFade = 0.12; // opacity of tail tip relative to head
-    var isComet  = (effect === 'comet_short' || effect === 'comet_medium' || effect === 'comet_long');
+    var isComet =
+      effect === 'comet_short' ||
+      effect === 'comet_medium' ||
+      effect === 'comet_long';
 
-    var animPath   = null;
+    var animPath = null;
     var cometElems = [];
 
     if (effect === 'dot') {
       animPath = document.createElementNS(svgNS, 'path');
-      animPath.setAttribute('d',                 pathData);
-      animPath.setAttribute('fill',              'none');
-      animPath.setAttribute('stroke',            dotColor);
-      animPath.setAttribute('stroke-width',      dotSize);
-      animPath.setAttribute('stroke-linecap',    'round');
-      animPath.setAttribute('stroke-dasharray',  dotLength + ' ' + dotSpacing);
+      animPath.setAttribute('d', pathData);
+      animPath.setAttribute('fill', 'none');
+      animPath.setAttribute('stroke', dotColor);
+      animPath.setAttribute('stroke-width', dotSize);
+      animPath.setAttribute('stroke-linecap', 'round');
+      animPath.setAttribute('stroke-dasharray', dotLength + ' ' + dotSpacing);
       animPath.setAttribute('stroke-dashoffset', '0');
       animPath.style.display = 'none'; // hidden until first entity state resolves speed
       svg.appendChild(animPath);
-
     } else if (isComet) {
       var trailSteps = 10;
       for (var ci = 0; ci < trailSteps; ci++) {
-        var cc     = document.createElementNS(svgNS, 'circle');
+        var cc = document.createElementNS(svgNS, 'circle');
         var cratio = 1 - ci / trailSteps;
-        cc.setAttribute('r',       Math.max(1, dotSize * (0.3 + cratio * 0.7)).toFixed(1));
-        cc.setAttribute('fill',    dotColor);
-        cc.setAttribute('opacity', (ci === 0 ? 1 : (trailFade + cratio * (1 - trailFade))).toFixed(2));
+        cc.setAttribute(
+          'r',
+          Math.max(1, dotSize * (0.3 + cratio * 0.7)).toFixed(1),
+        );
+        cc.setAttribute('fill', dotColor);
+        cc.setAttribute(
+          'opacity',
+          (ci === 0 ? 1 : trailFade + cratio * (1 - trailFade)).toFixed(2),
+        );
         cc.setAttribute('cx', '-9999');
         cc.setAttribute('cy', '-9999');
         cc.style.display = 'none'; // hidden until first entity state resolves speed
@@ -5108,36 +6091,41 @@
 
     function valueToSpeed(absVal) {
       if (absVal <= 0) return 0;
-      var minVal  = w.animate_min_value !== undefined ? w.animate_min_value : 100;
-      var maxVal  = w.animate_max_value !== undefined ? w.animate_max_value : 5000;
+      var minVal =
+        w.animate_min_value !== undefined ? w.animate_min_value : 100;
+      var maxVal =
+        w.animate_max_value !== undefined ? w.animate_max_value : 5000;
       // animate_min_rate / animate_max_rate are now pixels-per-second values.
       // Speed is line-length-independent so dots on all lines move at the same
       // visual velocity regardless of how long each line is.
-      var minRate = w.animate_min_rate  !== undefined ? w.animate_min_rate  : 10;
-      var maxRate = w.animate_max_rate  !== undefined ? w.animate_max_rate  : 60;
+      var minRate = w.animate_min_rate !== undefined ? w.animate_min_rate : 10;
+      var maxRate = w.animate_max_rate !== undefined ? w.animate_max_rate : 60;
       var clamped = Math.max(minVal, Math.min(maxVal, absVal));
       // Linear scale: value maps proportionally to speed.
       // Half the value range = half the speed range, as expected.
       var t = (clamped - minVal) / (maxVal - minVal); // 0..1 linear
-      return minRate + t * (maxRate - minRate);  // pixels per second
+      return minRate + t * (maxRate - minRate); // pixels per second
     }
 
     // ---- RAF animation loop -------------------------------------------
 
     var curSpeed = 0;
-    var curDir   = 1;
-    var prevDir  = 1;
+    var curDir = 1;
+    var prevDir = 1;
     // Comet starts at trailLen so circles are spread along the trail immediately.
     // Dot/dash starts at 0 (first dot at path start is fine for dashoffset animation).
-    var offset   = isComet ? trailLen : 0;
-    var lastTs   = null;
-    var active   = true;
-    var rafId    = null;
+    var offset = isComet ? trailLen : 0;
+    var lastTs = null;
+    var active = true;
+    var rafId = null;
 
     function rafTick(ts) {
       if (!active) return;
       rafId = requestAnimationFrame(rafTick);
-      if (lastTs === null) { lastTs = ts; return; }
+      if (lastTs === null) {
+        lastTs = ts;
+        return;
+      }
       var dt = (ts - lastTs) / 1000;
       lastTs = ts;
       if (curSpeed <= 0) return;
@@ -5151,21 +6139,21 @@
       offset += curSpeed * dt; // always positive
 
       if (effect === 'dot') {
-        var cycle         = dotLength + currentDotSpacing;
+        var cycle = dotLength + currentDotSpacing;
         var normalizedOff = offset % cycle;
         // Forward (curDir 1): negative dashoffset shifts pattern toward path end
         // Reverse (curDir -1): positive dashoffset shifts pattern toward path start
         var dashOff = curDir === 1 ? -normalizedOff : normalizedOff;
         animPath.setAttribute('stroke-dashoffset', dashOff.toFixed(1));
-
       } else if (isComet) {
-        var pos     = offset % pathLength;
-        var headPos = curDir === 1 ? pos : (pathLength - pos);
-        var step    = trailLen / cometElems.length;
+        var pos = offset % pathLength;
+        var headPos = curDir === 1 ? pos : pathLength - pos;
+        var step = trailLen / cometElems.length;
         for (var ri = 0; ri < cometElems.length; ri++) {
-          var trailPos = curDir === 1
-            ? Math.max(0,          headPos - ri * step)
-            : Math.min(pathLength, headPos + ri * step);
+          var trailPos =
+            curDir === 1
+              ? Math.max(0, headPos - ri * step)
+              : Math.min(pathLength, headPos + ri * step);
           var pt = trackPath.getPointAtLength(trailPos);
           cometElems[ri].setAttribute('cx', pt.x.toFixed(1));
           cometElems[ri].setAttribute('cy', pt.y.toFixed(1));
@@ -5179,39 +6167,53 @@
         id: null,
         stop: function () {
           active = false;
-          if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-        }
+          if (rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
+        },
       });
     }
 
     // ---- State / overrides application --------------------------------
 
     function applyLineState(state) {
-      var ovr = state ? (resolveOverrides(w, state) || {}) : {};
+      var ovr = state ? resolveOverrides(w, state) || {} : {};
 
-      var newColor = resolveColor(ovr.color !== undefined ? ovr.color : (w.color || 'surface2'));
+      var newColor = resolveColor(
+        ovr.color !== undefined ? ovr.color : w.color || 'surface2',
+      );
       trackPath.setAttribute('stroke', newColor);
 
       var newThick = ovr.thickness !== undefined ? ovr.thickness : thickness;
       trackPath.setAttribute('stroke-width', newThick);
 
-      var newArrow = ovr.arrow !== undefined ? ovr.arrow : (w.arrow || 'none');
+      var newArrow = ovr.arrow !== undefined ? ovr.arrow : w.arrow || 'none';
       applyArrows(newArrow, newColor);
 
-      var newDotColor = resolveColor(ovr.dot_color !== undefined ? ovr.dot_color : (w.dot_color || w.color || 'primary'));
+      var newDotColor = resolveColor(
+        ovr.dot_color !== undefined
+          ? ovr.dot_color
+          : w.dot_color || w.color || 'primary',
+      );
       if (animPath) animPath.setAttribute('stroke', newDotColor);
-      for (var si = 0; si < cometElems.length; si++) cometElems[si].setAttribute('fill', newDotColor);
+      for (var si = 0; si < cometElems.length; si++)
+        cometElems[si].setAttribute('fill', newDotColor);
 
-      var newSpacing = ovr.dot_spacing !== undefined ? ovr.dot_spacing : dotSpacing;
+      var newSpacing =
+        ovr.dot_spacing !== undefined ? ovr.dot_spacing : dotSpacing;
       if (newSpacing !== currentDotSpacing && animPath && effect === 'dot') {
         currentDotSpacing = newSpacing;
-        animPath.setAttribute('stroke-dasharray', dotLength + ' ' + currentDotSpacing);
+        animPath.setAttribute(
+          'stroke-dasharray',
+          dotLength + ' ' + currentDotSpacing,
+        );
       }
 
       if (state && w.entity) {
-        var val    = parseFloat(state.state);
+        var val = parseFloat(state.state);
         var absVal = isNaN(val) ? 0 : Math.abs(val);
-        curDir   = (!isNaN(val) && val < 0) ? -1 : 1;
+        curDir = !isNaN(val) && val < 0 ? -1 : 1;
         curSpeed = valueToSpeed(absVal);
         var stopped = curSpeed <= 0;
         trackPath.setAttribute('opacity', stopped ? String(inactOpac) : '1');
@@ -5220,21 +6222,26 @@
           cometElems[si].style.display = stopped ? 'none' : '';
           if (!stopped) {
             var sr = 1 - si / cometElems.length;
-            cometElems[si].setAttribute('opacity', (si === 0 ? 1 : (trailFade + sr * (1 - trailFade))).toFixed(2));
+            cometElems[si].setAttribute(
+              'opacity',
+              (si === 0 ? 1 : trailFade + sr * (1 - trailFade)).toFixed(2),
+            );
           }
         }
       }
     }
 
-    applyLineState(w.entity ? (entityStates[w.entity] || null) : null);
+    applyLineState(w.entity ? entityStates[w.entity] || null : null);
     if (w.entity) {
-      registerEntityCallback(w.entity, function (state) { applyLineState(state); });
+      registerEntityCallback(w.entity, function (state) {
+        applyLineState(state);
+      });
     }
     if (w.entity2) {
       // entity2 state is available as state2/attribute2 in override conditions.
       // When entity2 changes, re-evaluate overrides against the current primary state.
       registerEntityCallback(w.entity2, function () {
-        applyLineState(w.entity ? (entityStates[w.entity] || null) : null);
+        applyLineState(w.entity ? entityStates[w.entity] || null : null);
       });
     }
   }
@@ -5251,28 +6258,39 @@
   //
   function renderCamera(el, w) {
     el.className += ' widget-image';
-    el.style.overflow     = 'hidden';
+    el.style.overflow = 'hidden';
     el.style.borderRadius = (w.radius !== undefined ? w.radius : 0) + 'px';
-    el.style.background   = '#111';
-    el.style.cursor       = 'pointer';
+    el.style.background = '#111';
+    el.style.cursor = 'pointer';
 
     var preview = w.preview || 'mjpeg';
     var snapshotEntity = w.snapshot_entity || w.entity;
-    var streamEntity   = w.stream_entity   || w.entity;
+    var streamEntity = w.stream_entity || w.entity;
 
     // Build the preview area based on mode
     if (preview === 'mjpeg') {
       renderCameraMjpeg(el, w, streamEntity);
     } else if (preview === 'snapshot') {
-      renderCameraSnapshot(el, w, snapshotEntity, (w.refresh_interval || 3) * 1000);
+      renderCameraSnapshot(
+        el,
+        w,
+        snapshotEntity,
+        (w.refresh_interval || 3) * 1000,
+      );
     } else if (preview === 'poster') {
-      renderCameraSnapshot(el, w, snapshotEntity, (w.refresh_interval || 60) * 1000, true);
+      renderCameraSnapshot(
+        el,
+        w,
+        snapshotEntity,
+        (w.refresh_interval || 60) * 1000,
+        true,
+      );
     } else if (preview === 'url') {
       renderCameraDirectUrl(el, w);
     }
 
     // Tap -> fullscreen HLS stream
-    el.addEventListener('click', function() {
+    el.addEventListener('click', function () {
       openFullscreenStream(streamEntity, w);
     });
   }
@@ -5280,10 +6298,10 @@
   // MJPEG preview - one persistent connection, browser renders frames automatically
   function renderCameraMjpeg(el, w, entity) {
     var img = document.createElement('img');
-    img.style.width     = '100%';
-    img.style.height    = '100%';
+    img.style.width = '100%';
+    img.style.height = '100%';
     img.style.objectFit = w.fit || 'cover';
-    img.style.display   = 'block';
+    img.style.display = 'block';
     el.appendChild(img);
 
     var loader = document.createElement('div');
@@ -5295,10 +6313,23 @@
 
     // Request a signed MJPEG stream URL - one sign per session, stream stays open
     var path = '/api/camera_proxy_stream/' + entity;
-    requestSignedUrl(path, 3600, function(url) {
-      if (!url) { loader.textContent = ''; var e = document.createElement('span'); e.className = 'mdi mdi-alert-circle'; loader.appendChild(e); return; }
-      img.onload = function() { loader.style.display = 'none'; };
-      img.onerror = function() { loader.textContent = ''; var e = document.createElement('span'); e.className = 'mdi mdi-alert-circle'; loader.appendChild(e); };
+    requestSignedUrl(path, 3600, function (url) {
+      if (!url) {
+        loader.textContent = '';
+        var e = document.createElement('span');
+        e.className = 'mdi mdi-alert-circle';
+        loader.appendChild(e);
+        return;
+      }
+      img.onload = function () {
+        loader.style.display = 'none';
+      };
+      img.onerror = function () {
+        loader.textContent = '';
+        var e = document.createElement('span');
+        e.className = 'mdi mdi-alert-circle';
+        loader.appendChild(e);
+      };
       img.src = url;
     });
 
@@ -5308,10 +6339,10 @@
   // Snapshot preview - polls at interval, optionally overlays a play button (poster mode)
   function renderCameraSnapshot(el, w, entity, interval, showPlayButton) {
     var img = document.createElement('img');
-    img.style.width     = '100%';
-    img.style.height    = '100%';
+    img.style.width = '100%';
+    img.style.height = '100%';
     img.style.objectFit = w.fit || 'cover';
-    img.style.display   = 'block';
+    img.style.display = 'block';
     el.appendChild(img);
 
     var loader = document.createElement('div');
@@ -5324,7 +6355,9 @@
     if (showPlayButton) {
       var playBtn = document.createElement('div');
       playBtn.className = 'camera-play-btn';
-      var playIcon = document.createElement('span'); playIcon.className = 'mdi mdi-play-circle'; playBtn.appendChild(playIcon);
+      var playIcon = document.createElement('span');
+      playIcon.className = 'mdi mdi-play-circle';
+      playBtn.appendChild(playIcon);
       el.appendChild(playBtn);
     }
 
@@ -5332,9 +6365,19 @@
     var pendingSignIds = [];
 
     var mode = showPlayButton ? 'poster' : 'snapshot';
-    console.log('HAven camera [' + (w.id || entity) + ']: ' + mode + ' init, entity=' + entity + ', interval=' + (interval / 1000) + 's');
+    console.log(
+      'HAven camera [' +
+        (w.id || entity) +
+        ']: ' +
+        mode +
+        ' init, entity=' +
+        entity +
+        ', interval=' +
+        interval / 1000 +
+        's',
+    );
 
-    var fetchSnapshot = function() {
+    var fetchSnapshot = function () {
       if (!active || !entity) return;
 
       // Use camera entity's access_token from state cache - no WS round-trip
@@ -5342,17 +6385,27 @@
       var token = state && state.attributes && state.attributes.access_token;
 
       if (token) {
-        var url = getHaApiUrl('/api/camera_proxy/' + entity
-                + '?token=' + token + '&t=' + Date.now());
+        var url = getHaApiUrl(
+          '/api/camera_proxy/' +
+            entity +
+            '?token=' +
+            token +
+            '&t=' +
+            Date.now(),
+        );
         var nextImg = new Image();
-        nextImg.onload = function() {
+        nextImg.onload = function () {
           if (!active) return;
           img.src = nextImg.src;
           loader.style.display = 'none';
         };
-        nextImg.onerror = function() {
+        nextImg.onerror = function () {
           if (!active) return;
-          console.warn('HAven camera [' + (w.id || entity) + ']: snapshot fetch failed, token may be stale - clearing to force sign_path fallback');
+          console.warn(
+            'HAven camera [' +
+              (w.id || entity) +
+              ']: snapshot fetch failed, token may be stale - clearing to force sign_path fallback',
+          );
           if (entityStates[entity] && entityStates[entity].attributes) {
             entityStates[entity].attributes.access_token = null;
           }
@@ -5363,17 +6416,24 @@
         // Use a flag on the element to avoid registering the callback more than once.
         if (!el._stateFetched) {
           el._stateFetched = true;
-          console.log('HAven camera [' + (w.id || entity) + ']: no access_token in cache, fetching entity state + sign_path fallback');
+          console.log(
+            'HAven camera [' +
+              (w.id || entity) +
+              ']: no access_token in cache, fetching entity state + sign_path fallback',
+          );
           fetchEntityState(entity);
           // Persistent callback: stays registered until access_token arrives (camera may
           // come back online after being unavailable) or the page is navigated away
           // (entityCallbacks is replaced on page nav so no leak).
-          var onStateArrived = function(state) {
+          var onStateArrived = function (state) {
             if (!active) return;
             if (state && state.attributes && state.attributes.access_token) {
               // Token available now - deregister and load immediately
               var cbs = entityCallbacks[entity];
-              if (cbs) { var idx = cbs.indexOf(onStateArrived); if (idx !== -1) cbs.splice(idx, 1); }
+              if (cbs) {
+                var idx = cbs.indexOf(onStateArrived);
+                if (idx !== -1) cbs.splice(idx, 1);
+              }
               fetchSnapshot();
             }
             // No access_token yet: stay registered so next state_changed retries
@@ -5384,20 +6444,34 @@
         // Prevents orphaned pendingStreamRequests entries and duplicate in-flight requests.
         if (wsAuthenticated && !el._signPending) {
           el._signPending = true;
-          var path   = '/api/camera_proxy/' + entity;
-          var ttl    = Math.ceil(interval / 1000) + 5;
-          var signId = requestSignedUrl(path, ttl, function(signedUrl) {
+          var path = '/api/camera_proxy/' + entity;
+          var ttl = Math.ceil(interval / 1000) + 5;
+          var signId = requestSignedUrl(path, ttl, function (signedUrl) {
             el._signPending = false;
             var i = pendingSignIds.indexOf(signId);
             if (i !== -1) pendingSignIds.splice(i, 1);
             if (!active) return;
             if (!signedUrl) {
-              console.warn('HAven camera [' + (w.id || entity) + ']: sign_path returned no URL');
+              console.warn(
+                'HAven camera [' +
+                  (w.id || entity) +
+                  ']: sign_path returned no URL',
+              );
               return;
             }
             var fb = new Image();
-            fb.onload = function() { if (!active) return; img.src = fb.src; loader.style.display = 'none'; };
-            fb.onerror = function() { console.warn('HAven camera [' + (w.id || entity) + ']: sign_path image load failed'); };
+            fb.onload = function () {
+              if (!active) return;
+              img.src = fb.src;
+              loader.style.display = 'none';
+            };
+            fb.onerror = function () {
+              console.warn(
+                'HAven camera [' +
+                  (w.id || entity) +
+                  ']: sign_path image load failed',
+              );
+            };
             fb.src = signedUrl;
           });
           pendingSignIds.push(signId);
@@ -5408,9 +6482,11 @@
     fetchSnapshot();
     var timer = setInterval(fetchSnapshot, interval);
     activePageTimers.push({
-      id:         timer,
-      stop:       function() { active = false; },
-      pendingIds: pendingSignIds
+      id: timer,
+      stop: function () {
+        active = false;
+      },
+      pendingIds: pendingSignIds,
     });
   }
 
@@ -5421,10 +6497,10 @@
   //   b) visit the camera IP directly in the browser once to accept the certificate
   function renderCameraDirectUrl(el, w) {
     var img = document.createElement('img');
-    img.style.width     = '100%';
-    img.style.height    = '100%';
+    img.style.width = '100%';
+    img.style.height = '100%';
     img.style.objectFit = w.fit || 'cover';
-    img.style.display   = 'block';
+    img.style.display = 'block';
 
     var loader = document.createElement('div');
     loader.className = 'camera-loader';
@@ -5436,30 +6512,43 @@
 
     var url = w.url || '';
 
-    img.onload  = function() { loader.style.display = 'none'; };
-    img.onerror = function() {
+    img.onload = function () {
+      loader.style.display = 'none';
+    };
+    img.onerror = function () {
       loader.style.display = 'flex';
-      loader.textContent = ''; var e = document.createElement('span'); e.className = 'mdi mdi-alert-circle'; loader.appendChild(e);
+      loader.textContent = '';
+      var e = document.createElement('span');
+      e.className = 'mdi mdi-alert-circle';
+      loader.appendChild(e);
     };
 
     var active = true;
-    var doFetch = function() {
+    var doFetch = function () {
       if (!active) return;
       // Always bust cache - the rs= param in Reolink URLs isn't enough
-      img.src = url + (url.indexOf('?') !== -1 ? '&' : '?') + '_t=' + Date.now();
+      img.src =
+        url + (url.indexOf('?') !== -1 ? '&' : '?') + '_t=' + Date.now();
     };
 
     doFetch();
 
     if (w.refresh_interval) {
       var timer = setInterval(doFetch, w.refresh_interval * 1000);
-      activePageTimers.push({ id: timer, stop: function() { active = false; } });
+      activePageTimers.push({
+        id: timer,
+        stop: function () {
+          active = false;
+        },
+      });
     }
 
     if (w.preview === 'poster') {
       var playBtn = document.createElement('div');
-      playBtn.className   = 'camera-play-btn';
-      var playIcon = document.createElement('span'); playIcon.className = 'mdi mdi-play-circle'; playBtn.appendChild(playIcon);
+      playBtn.className = 'camera-play-btn';
+      var playIcon = document.createElement('span');
+      playIcon.className = 'mdi mdi-play-circle';
+      playBtn.appendChild(playIcon);
       el.appendChild(playBtn);
     }
   }
@@ -5469,7 +6558,7 @@
   function openFullscreenImage(url, title) {
     var overlay = buildFullscreenOverlay(title);
     var img = document.createElement('img');
-    img.style.maxWidth  = '100%';
+    img.style.maxWidth = '100%';
     img.style.maxHeight = '100%';
     img.style.objectFit = 'contain';
     img.src = url;
@@ -5486,51 +6575,88 @@
     loaderIcon.className = 'mdi mdi-loading mdi-spin';
     loader.appendChild(loaderIcon);
     loader.style.position = 'relative';
-    loader.style.width    = '100%';
-    loader.style.height   = '100%';
+    loader.style.width = '100%';
+    loader.style.height = '100%';
     overlay.content.appendChild(loader);
     document.body.appendChild(overlay.el);
 
     var streamMsgId = msgId++;
-    console.log('HAven camera [' + (w.id || entity) + ']: requesting HLS stream, entity=' + entity + ', msgId=' + streamMsgId);
-    pendingRequests[streamMsgId] = function(result) {
+    console.log(
+      'HAven camera [' +
+        (w.id || entity) +
+        ']: requesting HLS stream, entity=' +
+        entity +
+        ', msgId=' +
+        streamMsgId,
+    );
+    pendingRequests[streamMsgId] = function (result) {
       if (!result || !result.url) {
-        console.warn('HAven camera [' + (w.id || entity) + ']: camera/stream result has no URL. result=', result);
-        loader.textContent = ''; var e = document.createElement('span'); e.className = 'mdi mdi-alert-circle'; loader.appendChild(e);
+        console.warn(
+          'HAven camera [' +
+            (w.id || entity) +
+            ']: camera/stream result has no URL. result=',
+          result,
+        );
+        loader.textContent = '';
+        var e = document.createElement('span');
+        e.className = 'mdi mdi-alert-circle';
+        loader.appendChild(e);
         return;
       }
       var streamUrl = haUrl + result.url;
-      console.log('HAven camera [' + (w.id || entity) + ']: stream URL received:', streamUrl);
+      console.log(
+        'HAven camera [' + (w.id || entity) + ']: stream URL received:',
+        streamUrl,
+      );
       loader.style.display = 'none';
 
       var video = document.createElement('video');
-      video.style.width     = '100%';
-      video.style.height    = '100%';
+      video.style.width = '100%';
+      video.style.height = '100%';
       video.style.objectFit = 'contain';
       video.style.background = '#000';
-      video.autoplay    = true;
+      video.autoplay = true;
       video.playsInline = true;
-      video.controls    = true;
-      video.muted       = false;
-      video.loop        = true;
+      video.controls = true;
+      video.muted = false;
+      video.loop = true;
 
       overlay.content.appendChild(video);
 
       function startPlayback() {
-        console.log('HAven camera [' + (w.id || entity) + ']: starting playback');
-        video.play().catch(function(err) {
-          console.log('HAven camera [' + (w.id || entity) + ']: autoplay blocked, retrying muted:', err.message);
+        console.log(
+          'HAven camera [' + (w.id || entity) + ']: starting playback',
+        );
+        video.play().catch(function (err) {
+          console.log(
+            'HAven camera [' +
+              (w.id || entity) +
+              ']: autoplay blocked, retrying muted:',
+            err.message,
+          );
           video.muted = true;
-          video.play().catch(function(err2) {
-            console.warn('HAven camera [' + (w.id || entity) + ']: muted play also failed:', err2.message);
+          video.play().catch(function (err2) {
+            console.warn(
+              'HAven camera [' +
+                (w.id || entity) +
+                ']: muted play also failed:',
+              err2.message,
+            );
           });
         });
       }
 
-      video.addEventListener('error', function() {
+      video.addEventListener('error', function () {
         var err = video.error;
-        var msg = err ? ('code=' + err.code + ' ' + (err.message || '')) : 'unknown';
-        console.warn('HAven camera [' + (w.id || entity) + ']: video element error: ' + msg);
+        var msg = err
+          ? 'code=' + err.code + ' ' + (err.message || '')
+          : 'unknown';
+        console.warn(
+          'HAven camera [' +
+            (w.id || entity) +
+            ']: video element error: ' +
+            msg,
+        );
         loader.style.display = 'flex';
         loader.textContent = '';
         var icon = document.createElement('span');
@@ -5543,62 +6669,110 @@
         txt.style.fontSize = '13px';
         txt.style.marginTop = '8px';
         txt.style.textAlign = 'center';
-        txt.textContent = 'Stream unavailable. Check HA camera integration and logs.';
+        txt.textContent =
+          'Stream unavailable. Check HA camera integration and logs.';
         loader.appendChild(txt);
       });
 
       if (video.canPlayType('application/vnd.apple.mpegurl')) {
         // Native HLS - Safari and iOS
-        console.log('HAven camera [' + (w.id || entity) + ']: using native HLS (Safari/iOS)');
+        console.log(
+          'HAven camera [' +
+            (w.id || entity) +
+            ']: using native HLS (Safari/iOS)',
+        );
         video.src = streamUrl;
         startPlayback();
       } else if (window.Hls && window.Hls.isSupported()) {
-        console.log('HAven camera [' + (w.id || entity) + ']: using HLS.js (already loaded)');
+        console.log(
+          'HAven camera [' +
+            (w.id || entity) +
+            ']: using HLS.js (already loaded)',
+        );
         var hls = new window.Hls();
         hls.loadSource(streamUrl);
         hls.attachMedia(video);
-        hls.on(window.Hls.Events.MANIFEST_PARSED, function() {
-          console.log('HAven camera [' + (w.id || entity) + ']: HLS manifest parsed');
+        hls.on(window.Hls.Events.MANIFEST_PARSED, function () {
+          console.log(
+            'HAven camera [' + (w.id || entity) + ']: HLS manifest parsed',
+          );
           startPlayback();
         });
-        hls.on(window.Hls.Events.ERROR, function(event, data) {
-          if (data.fatal) console.warn('HAven camera [' + (w.id || entity) + ']: HLS.js fatal error:', data.type, data.details);
+        hls.on(window.Hls.Events.ERROR, function (event, data) {
+          if (data.fatal)
+            console.warn(
+              'HAven camera [' + (w.id || entity) + ']: HLS.js fatal error:',
+              data.type,
+              data.details,
+            );
         });
-        overlay.el.addEventListener('overlay-close', function() { hls.destroy(); });
+        overlay.el.addEventListener('overlay-close', function () {
+          hls.destroy();
+        });
       } else {
         // Load HLS.js dynamically - only fetched once then cached by browser
-        console.log('HAven camera [' + (w.id || entity) + ']: loading HLS.js dynamically');
+        console.log(
+          'HAven camera [' + (w.id || entity) + ']: loading HLS.js dynamically',
+        );
         var script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.12/hls.min.js';
-        script.onload = function() {
+        script.src =
+          'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.12/hls.min.js';
+        script.onload = function () {
           if (window.Hls.isSupported()) {
-            console.log('HAven camera [' + (w.id || entity) + ']: HLS.js loaded OK');
+            console.log(
+              'HAven camera [' + (w.id || entity) + ']: HLS.js loaded OK',
+            );
             var hls = new window.Hls();
             hls.loadSource(streamUrl);
             hls.attachMedia(video);
-            hls.on(window.Hls.Events.MANIFEST_PARSED, function() {
-              console.log('HAven camera [' + (w.id || entity) + ']: HLS manifest parsed');
+            hls.on(window.Hls.Events.MANIFEST_PARSED, function () {
+              console.log(
+                'HAven camera [' + (w.id || entity) + ']: HLS manifest parsed',
+              );
               startPlayback();
             });
-            hls.on(window.Hls.Events.ERROR, function(event, data) {
-              if (data.fatal) console.warn('HAven camera [' + (w.id || entity) + ']: HLS.js fatal error:', data.type, data.details);
+            hls.on(window.Hls.Events.ERROR, function (event, data) {
+              if (data.fatal)
+                console.warn(
+                  'HAven camera [' +
+                    (w.id || entity) +
+                    ']: HLS.js fatal error:',
+                  data.type,
+                  data.details,
+                );
             });
-            overlay.el.addEventListener('overlay-close', function() { hls.destroy(); });
+            overlay.el.addEventListener('overlay-close', function () {
+              hls.destroy();
+            });
           } else {
-            console.warn('HAven camera [' + (w.id || entity) + ']: HLS.js loaded but not supported in this browser');
-            loader.textContent = ''; var e = document.createElement('span'); e.className = 'mdi mdi-alert-circle'; loader.appendChild(e);
+            console.warn(
+              'HAven camera [' +
+                (w.id || entity) +
+                ']: HLS.js loaded but not supported in this browser',
+            );
+            loader.textContent = '';
+            var e = document.createElement('span');
+            e.className = 'mdi mdi-alert-circle';
+            loader.appendChild(e);
             loader.style.display = 'flex';
           }
         };
-        script.onerror = function() {
-          console.warn('HAven camera [' + (w.id || entity) + ']: failed to load HLS.js script from CDN');
-          loader.textContent = ''; var e = document.createElement('span'); e.className = 'mdi mdi-alert-circle'; loader.appendChild(e);
+        script.onerror = function () {
+          console.warn(
+            'HAven camera [' +
+              (w.id || entity) +
+              ']: failed to load HLS.js script from CDN',
+          );
+          loader.textContent = '';
+          var e = document.createElement('span');
+          e.className = 'mdi mdi-alert-circle';
+          loader.appendChild(e);
           loader.style.display = 'flex';
         };
         document.head.appendChild(script);
       }
 
-      overlay.el.addEventListener('overlay-close', function() {
+      overlay.el.addEventListener('overlay-close', function () {
         video.pause();
         video.src = '';
       });
@@ -5615,16 +6789,16 @@
     header.className = 'fs-header';
 
     var titleEl = document.createElement('span');
-    titleEl.className   = 'fs-title';
+    titleEl.className = 'fs-title';
     titleEl.textContent = title || '';
     header.appendChild(titleEl);
 
     var closeBtn = document.createElement('button');
-    closeBtn.className        = 'fs-close';
+    closeBtn.className = 'fs-close';
     var closeIcon = document.createElement('span');
     closeIcon.className = 'mdi mdi-close';
     closeBtn.appendChild(closeIcon);
-    closeBtn.addEventListener('click', function() {
+    closeBtn.addEventListener('click', function () {
       overlay.dispatchEvent(new CustomEvent('overlay-close'));
       document.body.removeChild(overlay);
       resetReturnTimer();
@@ -5636,7 +6810,7 @@
     content.className = 'fs-content';
     overlay.appendChild(content);
 
-    overlay.addEventListener('click', function(e) {
+    overlay.addEventListener('click', function (e) {
       if (e.target === overlay) {
         overlay.dispatchEvent(new CustomEvent('overlay-close'));
         document.body.removeChild(overlay);
@@ -5651,10 +6825,15 @@
   // Returns the msgId so callers can track and cancel if needed
   function requestSignedUrl(path, expires, cb) {
     var id = msgId++;
-    pendingRequests[id] = function(result) {
+    pendingRequests[id] = function (result) {
       cb(result && result.path ? haUrl + result.path : null);
     };
-    wsSend({ id: id, type: 'auth/sign_path', path: path, expires: expires || 20 });
+    wsSend({
+      id: id,
+      type: 'auth/sign_path',
+      path: path,
+      expires: expires || 20,
+    });
     return id;
   }
   // -- History Chart --
@@ -5678,64 +6857,73 @@
 
   function renderHistoryChart(el, w) {
     el.className += ' widget-history-chart';
-    el.style.background   = resolveColor(w.background || 'surface');
+    el.style.background = resolveColor(w.background || 'surface');
     el.style.borderRadius = (w.radius !== undefined ? w.radius : 4) + 'px';
-    el.style.overflow     = 'hidden';
+    el.style.overflow = 'hidden';
 
     if (w.fullscreen_on_tap) {
       el.style.cursor = 'pointer';
-      el.addEventListener('click', function() { openFullscreenChart(w); });
+      el.addEventListener('click', function () {
+        openFullscreenChart(w);
+      });
     }
 
     // SVG element fills the widget — redrawn in-place on each data refresh
     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width',  w.w || 200);
+    svg.setAttribute('width', w.w || 200);
     svg.setAttribute('height', w.h || 100);
     svg.style.display = 'block';
     el.appendChild(svg);
 
     // Show a placeholder until data arrives (page renders before WS connects)
     var svgH = w.h || 100;
-    svg.innerHTML = '<text x="50%" y="' + Math.round(svgH / 2) + '" text-anchor="middle"' +
-      ' font-size="11" fill="' + resolveColor('text_muted') + '">loading\u2026</text>';
+    svg.innerHTML =
+      '<text x="50%" y="' +
+      Math.round(svgH / 2) +
+      '" text-anchor="middle"' +
+      ' font-size="11" fill="' +
+      resolveColor('text_muted') +
+      '">loading\u2026</text>';
 
     // fetchHistoryStats will retry until WS is ready; no immediate bail on page render
     fetchHistoryStats(w, svg, 20);
 
     // Periodic refresh registered in activePageTimers so it's cancelled on page navigation
-    var defaultInterval = (w.period === 'hour') ? 300 : 3600;
+    var defaultInterval = w.period === 'hour' ? 300 : 3600;
     var intervalMs = (w.refresh_interval || defaultInterval) * 1000;
-    var timer = setInterval(function() { fetchHistoryStats(w, svg, 0); }, intervalMs);
+    var timer = setInterval(function () {
+      fetchHistoryStats(w, svg, 0);
+    }, intervalMs);
     activePageTimers.push(timer);
   }
 
   function openFullscreenChart(w) {
-    var overlay  = buildFullscreenOverlay(w.label || w.entity || 'Chart');
-    var content  = overlay.content;
-    var views    = w.fullscreen_views;  // optional [{label, period, count, stat_type}, ...]
+    var overlay = buildFullscreenOverlay(w.label || w.entity || 'Chart');
+    var content = overlay.content;
+    var views = w.fullscreen_views; // optional [{label, period, count, stat_type}, ...]
 
-    content.style.background    = resolveColor(w.background || 'surface');
-    content.style.display       = 'flex';
+    content.style.background = resolveColor(w.background || 'surface');
+    content.style.display = 'flex';
     content.style.flexDirection = 'column';
 
     // Button bar — only built when there are multiple views to switch between
-    var btnBar   = null;
+    var btnBar = null;
     var activeBtn = null;
     if (views && views.length > 1) {
       btnBar = document.createElement('div');
-      btnBar.style.flexShrink     = '0';
-      btnBar.style.display        = 'flex';
-      btnBar.style.flexWrap       = 'wrap';
+      btnBar.style.flexShrink = '0';
+      btnBar.style.display = 'flex';
+      btnBar.style.flexWrap = 'wrap';
       btnBar.style.justifyContent = 'center';
-      btnBar.style.padding        = '10px 16px 6px';
+      btnBar.style.padding = '10px 16px 6px';
       content.appendChild(btnBar);
     }
 
     // Chart area — flex:1 so it fills remaining space after the button bar
     var chartArea = document.createElement('div');
-    chartArea.style.flex           = '1';
-    chartArea.style.display        = 'flex';
-    chartArea.style.alignItems     = 'center';
+    chartArea.style.flex = '1';
+    chartArea.style.display = 'flex';
+    chartArea.style.alignItems = 'center';
     chartArea.style.justifyContent = 'center';
     content.appendChild(chartArea);
 
@@ -5747,73 +6935,89 @@
       // Swap active button highlight
       if (btnBar && activeBtn) {
         activeBtn.style.background = resolveColor('surface2');
-        activeBtn.style.color      = resolveColor('text_muted');
+        activeBtn.style.color = resolveColor('text_muted');
       }
       if (btnBar && btn) {
         btn.style.background = resolveColor('primary');
-        btn.style.color      = resolveColor(w.background || 'surface');
+        btn.style.color = resolveColor(w.background || 'surface');
       }
       activeBtn = btn;
 
       // Remove the previous SVG
-      if (activeSvg && activeSvg.parentNode) { activeSvg.parentNode.removeChild(activeSvg); }
+      if (activeSvg && activeSvg.parentNode) {
+        activeSvg.parentNode.removeChild(activeSvg);
+      }
 
       // Dimensions: preserve original aspect ratio, cap to 90% screen width,
       // clamp height so chart never overflows a portrait viewport.
       var margin = 24;
-      var availW = chartArea.clientWidth  - margin * 2;
+      var availW = chartArea.clientWidth - margin * 2;
       var availH = chartArea.clientHeight - margin * 2;
       if (availW < 50 || availH < 50) return;
 
       var ratio = (w.w || 200) / (w.h || 100);
-      var cw    = Math.min(availW, Math.round(window.innerWidth * 0.9));
-      var ch    = Math.round(cw / ratio);
-      if (ch > availH) { ch = availH; cw = Math.round(ch * ratio); }
+      var cw = Math.min(availW, Math.round(window.innerWidth * 0.9));
+      var ch = Math.round(cw / ratio);
+      if (ch > availH) {
+        ch = availH;
+        cw = Math.round(ch * ratio);
+      }
 
       var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('width',  cw);
+      svg.setAttribute('width', cw);
       svg.setAttribute('height', ch);
-      svg.style.display      = 'block';
+      svg.style.display = 'block';
       svg.style.borderRadius = (w.radius !== undefined ? w.radius : 4) + 'px';
-      svg.style.background   = resolveColor(w.background || 'surface');
-      svg.innerHTML = '<text x="50%" y="' + Math.round(ch / 2) + '" text-anchor="middle"' +
-        ' font-size="14" fill="' + resolveColor('text_muted') + '">loading\u2026</text>';
+      svg.style.background = resolveColor(w.background || 'surface');
+      svg.innerHTML =
+        '<text x="50%" y="' +
+        Math.round(ch / 2) +
+        '" text-anchor="middle"' +
+        ' font-size="14" fill="' +
+        resolveColor('text_muted') +
+        '">loading\u2026</text>';
       chartArea.appendChild(svg);
       activeSvg = svg;
 
       // Merge base widget config with view overrides + modal dimensions
       var viewW = {};
-      for (var k in w) { if (w.hasOwnProperty(k)) viewW[k] = w[k]; }
+      for (var k in w) {
+        if (w.hasOwnProperty(k)) viewW[k] = w[k];
+      }
       viewW.w = cw;
       viewW.h = ch;
-      if (view.period)    viewW.period    = view.period;
-      if (view.count)     viewW.count     = view.count;
+      if (view.period) viewW.period = view.period;
+      if (view.count) viewW.count = view.count;
       if (view.stat_type) viewW.stat_type = view.stat_type;
 
       fetchHistoryStats(viewW, svg, 5);
     }
 
     // Build after layout so chartArea dimensions are measurable
-    setTimeout(function() {
-      var initialView = (views && views.length) ? views[0] : {};
+    setTimeout(function () {
+      var initialView = views && views.length ? views[0] : {};
 
       if (views && views.length > 1) {
         for (var i = 0; i < views.length; i++) {
-          (function(view, idx) {
+          (function (view, idx) {
             var btn = document.createElement('button');
-            btn.textContent          = view.label || (view.count + ' ' + view.period);
-            btn.style.background     = resolveColor('surface2');
-            btn.style.color          = resolveColor('text_muted');
-            btn.style.border         = 'none';
-            btn.style.borderRadius   = '20px';
-            btn.style.padding        = '6px 16px';
-            btn.style.margin         = '0 4px 4px';
-            btn.style.fontSize       = '13px';
-            btn.style.cursor         = 'pointer';
-            btn.style.fontFamily     = 'inherit';
-            btn.addEventListener('click', function() { loadView(view, btn); });
+            btn.textContent = view.label || view.count + ' ' + view.period;
+            btn.style.background = resolveColor('surface2');
+            btn.style.color = resolveColor('text_muted');
+            btn.style.border = 'none';
+            btn.style.borderRadius = '20px';
+            btn.style.padding = '6px 16px';
+            btn.style.margin = '0 4px 4px';
+            btn.style.fontSize = '13px';
+            btn.style.cursor = 'pointer';
+            btn.style.fontFamily = 'inherit';
+            btn.addEventListener('click', function () {
+              loadView(view, btn);
+            });
             btnBar.appendChild(btn);
-            if (idx === 0) { loadView(view, btn); }
+            if (idx === 0) {
+              loadView(view, btn);
+            }
           })(views[i], i);
         }
       } else {
@@ -5826,12 +7030,14 @@
     // Page renders before WS connects - retry up to retries times at 2s intervals
     if (!ws || ws.readyState !== 1) {
       if (retries > 0) {
-        setTimeout(function() { fetchHistoryStats(w, svg, retries - 1); }, 2000);
+        setTimeout(function () {
+          fetchHistoryStats(w, svg, retries - 1);
+        }, 2000);
       }
       return;
     }
 
-    var count  = w.count  || 7;
+    var count = w.count || 7;
     var period = w.period || 'day';
 
     // Calculate start timestamp - go back `count` periods from now.
@@ -5846,41 +7052,47 @@
       start = new Date(now.getFullYear() - count, 0, 1);
     } else {
       // day - back from local midnight today
-      start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - count);
+      start = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() - count,
+      );
     }
 
     // One-off WS request - response routed via pendingStreamRequests by message ID
     var id = msgId++;
-    pendingRequests[id] = function(result) {
+    pendingRequests[id] = function (result) {
       if (!result) return;
       var stats = result[w.entity];
       if (!stats || !stats.length) return;
       updateHistoryChart(svg, w, stats);
     };
     wsSend({
-      id:            id,
-      type:          'recorder/statistics_during_period',
-      start_time:    start.toISOString(),
-      period:        period,
+      id: id,
+      type: 'recorder/statistics_during_period',
+      start_time: start.toISOString(),
+      period: period,
       statistic_ids: [w.entity],
-      types:         [w.stat_type || 'mean']
+      types: [w.stat_type || 'mean'],
     });
   }
 
   function updateHistoryChart(svg, w, stats) {
-    var count      = w.count    || 7;
-    var statType   = w.stat_type || 'mean';
-    var svgW       = w.w        || 200;
-    var svgH       = w.h        || 100;
-    var showLabels = (w.show_labels  !== false);
-    var showValues = (w.show_values  !== false);
-    var barRadius  = (w.radius !== undefined ? w.radius : 2);
-    var wPeriod    = w.period   || 'day';
+    var count = w.count || 7;
+    var statType = w.stat_type || 'mean';
+    var svgW = w.w || 200;
+    var svgH = w.h || 100;
+    var showLabels = w.show_labels !== false;
+    var showValues = w.show_values !== false;
+    var barRadius = w.radius !== undefined ? w.radius : 2;
+    var wPeriod = w.period || 'day';
 
-    var color      = resolveColor(w.color       || 'primary');
+    var color = resolveColor(w.color || 'primary');
     var todayColor = resolveColor(w.today_color || 'warning');
-    var trackColor = resolveColor(w.track_color !== undefined ? w.track_color : 'surface2');
-    var textColor  = resolveColor(w.label_color || 'text_muted');
+    var trackColor = resolveColor(
+      w.track_color !== undefined ? w.track_color : 'surface2',
+    );
+    var textColor = resolveColor(w.label_color || 'text_muted');
 
     // Take the last `count` entries (today/current period is always the last entry)
     var data = stats.slice(-count);
@@ -5890,7 +7102,9 @@
     var values = [];
     for (var i = 0; i < data.length; i++) {
       var v = data[i][statType];
-      values.push((v !== null && v !== undefined && !isNaN(v)) ? Math.max(0, v) : 0);
+      values.push(
+        v !== null && v !== undefined && !isNaN(v) ? Math.max(0, v) : 0,
+      );
     }
 
     // Y-axis ceiling: use configured max or auto-scale (min 1 to avoid divide-by-zero)
@@ -5898,45 +7112,94 @@
     if (!maxVal || maxVal <= 0) maxVal = 1;
 
     // Layout
-    var padX    = 2;
-    var gap     = 3;
-    var labelH  = showLabels ? 14 : 0;
-    var valueH  = showValues ? 13 : 0;
-    var topPad  = 2;
-    var barsH   = svgH - labelH - valueH - topPad;
-    var n       = data.length;
-    var barW    = Math.max(4, Math.floor((svgW - padX * 2 - gap * (n - 1)) / n));
+    var padX = 2;
+    var gap = 3;
+    var labelH = showLabels ? 14 : 0;
+    var valueH = showValues ? 13 : 0;
+    var topPad = 2;
+    var barsH = svgH - labelH - valueH - topPad;
+    var n = data.length;
+    var barW = Math.max(4, Math.floor((svgW - padX * 2 - gap * (n - 1)) / n));
 
-    var DAY_LTR   = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-    var MONTH_LTR = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+    var DAY_LTR = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    var MONTH_LTR = [
+      'J',
+      'F',
+      'M',
+      'A',
+      'M',
+      'J',
+      'J',
+      'A',
+      'S',
+      'O',
+      'N',
+      'D',
+    ];
 
     var parts = [];
     for (var j = 0; j < n; j++) {
-      var val     = values[j];
-      var pct     = Math.min(1, val / maxVal);
-      var barH    = Math.max((val > 0 ? 2 : 0), Math.round(pct * barsH));
-      var x       = padX + j * (barW + gap);
-      var isToday = (j === n - 1);  // last entry = current period
-      var bColor  = isToday ? todayColor : color;
+      var val = values[j];
+      var pct = Math.min(1, val / maxVal);
+      var barH = Math.max(val > 0 ? 2 : 0, Math.round(pct * barsH));
+      var x = padX + j * (barW + gap);
+      var isToday = j === n - 1; // last entry = current period
+      var bColor = isToday ? todayColor : color;
 
       // Track (full-height background)
       var trackY = topPad + valueH;
-      parts.push('<rect x="' + x + '" y="' + trackY + '" width="' + barW +
-        '" height="' + barsH + '" fill="' + trackColor + '" rx="' + barRadius + '"/>');
+      parts.push(
+        '<rect x="' +
+          x +
+          '" y="' +
+          trackY +
+          '" width="' +
+          barW +
+          '" height="' +
+          barsH +
+          '" fill="' +
+          trackColor +
+          '" rx="' +
+          barRadius +
+          '"/>',
+      );
 
       // Value bar (bottom-anchored inside track)
       if (barH > 0) {
         var barY = topPad + valueH + (barsH - barH);
-        parts.push('<rect x="' + x + '" y="' + barY + '" width="' + barW +
-          '" height="' + barH + '" fill="' + bColor + '" rx="' + barRadius + '"/>');
+        parts.push(
+          '<rect x="' +
+            x +
+            '" y="' +
+            barY +
+            '" width="' +
+            barW +
+            '" height="' +
+            barH +
+            '" fill="' +
+            bColor +
+            '" rx="' +
+            barRadius +
+            '"/>',
+        );
       }
 
       // Value label above bar
       if (showValues) {
-        var dv = val >= 10 ? String(Math.round(val)) : (val > 0 ? val.toFixed(1) : '');
+        var dv =
+          val >= 10 ? String(Math.round(val)) : val > 0 ? val.toFixed(1) : '';
         if (dv) {
-          parts.push('<text x="' + (x + barW / 2) + '" y="' + (topPad + valueH - 2) +
-            '" text-anchor="middle" font-size="10" fill="' + bColor + '">' + dv + '</text>');
+          parts.push(
+            '<text x="' +
+              (x + barW / 2) +
+              '" y="' +
+              (topPad + valueH - 2) +
+              '" text-anchor="middle" font-size="10" fill="' +
+              bColor +
+              '">' +
+              dv +
+              '</text>',
+          );
         }
       }
 
@@ -5945,13 +7208,26 @@
         var lbl = '?';
         try {
           var dt = new Date(data[j].start);
-          if (wPeriod === 'day' || wPeriod === 'hour') { lbl = DAY_LTR[dt.getDay()]; }
-          else if (wPeriod === 'month')                 { lbl = MONTH_LTR[dt.getMonth()]; }
-          else                                          { lbl = String(dt.getFullYear()).slice(-2); }
-        } catch(e) {}
+          if (wPeriod === 'day' || wPeriod === 'hour') {
+            lbl = DAY_LTR[dt.getDay()];
+          } else if (wPeriod === 'month') {
+            lbl = MONTH_LTR[dt.getMonth()];
+          } else {
+            lbl = String(dt.getFullYear()).slice(-2);
+          }
+        } catch (e) {}
         var lColor = isToday ? todayColor : textColor;
-        parts.push('<text x="' + (x + barW / 2) + '" y="' + (svgH - 2) +
-          '" text-anchor="middle" font-size="11" fill="' + lColor + '">' + lbl + '</text>');
+        parts.push(
+          '<text x="' +
+            (x + barW / 2) +
+            '" y="' +
+            (svgH - 2) +
+            '" text-anchor="middle" font-size="11" fill="' +
+            lColor +
+            '">' +
+            lbl +
+            '</text>',
+        );
       }
     }
 
@@ -5960,43 +7236,99 @@
 
   // -- Weather Forecast --
   var WEATHER_CONDITION_ICONS = {
-    'sunny':           'mdi:weather-sunny',
-    'clear-night':     'mdi:weather-night',
-    'cloudy':          'mdi:weather-cloudy',
-    'partlycloudy':    'mdi:weather-partly-cloudy',
-    'fog':             'mdi:weather-fog',
-    'hail':            'mdi:weather-hail',
-    'lightning':       'mdi:weather-lightning',
+    sunny: 'mdi:weather-sunny',
+    'clear-night': 'mdi:weather-night',
+    cloudy: 'mdi:weather-cloudy',
+    partlycloudy: 'mdi:weather-partly-cloudy',
+    fog: 'mdi:weather-fog',
+    hail: 'mdi:weather-hail',
+    lightning: 'mdi:weather-lightning',
     'lightning-rainy': 'mdi:weather-lightning-rainy',
-    'pouring':         'mdi:weather-pouring',
-    'rainy':           'mdi:weather-rainy',
-    'snowy':           'mdi:weather-snowy',
-    'snowy-rainy':     'mdi:weather-snowy-rainy',
-    'windy':           'mdi:weather-windy',
-    'windy-variant':   'mdi:weather-windy-variant',
-    'exceptional':     'mdi:alert-circle-outline'
+    pouring: 'mdi:weather-pouring',
+    rainy: 'mdi:weather-rainy',
+    snowy: 'mdi:weather-snowy',
+    'snowy-rainy': 'mdi:weather-snowy-rainy',
+    windy: 'mdi:weather-windy',
+    'windy-variant': 'mdi:weather-windy-variant',
+    exceptional: 'mdi:alert-circle-outline',
   };
 
   var WF_EXTRA_ICON = {
-    'precipitation': 'mdi:water',
-    'wind_speed':    'mdi:weather-windy',
-    'wind_bearing':  'mdi:compass',
-    'humidity':      'mdi:water-percent',
-    'uv_index':      'mdi:white-balance-sunny',
-    'temperature':   'mdi:thermometer-chevron-up',
-    'templow':       'mdi:thermometer-chevron-down',
-    'condition':     null
+    precipitation: 'mdi:water',
+    wind_speed: 'mdi:weather-windy',
+    wind_bearing: 'mdi:compass',
+    humidity: 'mdi:water-percent',
+    uv_index: 'mdi:white-balance-sunny',
+    temperature: 'mdi:thermometer-chevron-up',
+    templow: 'mdi:thermometer-chevron-down',
+    condition: null,
   };
 
   function getWeatherConditionIcon(cond) {
-    return WEATHER_CONDITION_ICONS[cond] || ('mdi:weather-' + (cond || 'cloudy'));
+    return WEATHER_CONDITION_ICONS[cond] || 'mdi:weather-' + (cond || 'cloudy');
   }
 
-  function getWeatherConditionImage(w, cond) {
+  var WEATHER_CONDITION_NIGHT_IMAGE_BY_DAY_FILE = {
+    'clear-day.png': 'clear-night.png',
+    'partly-cloudy-day.png': 'partly-cloudy-night.png',
+    'cloudy.png': 'cloudy-night.png',
+    'rain.png': 'rain-night.png',
+    'snow.png': 'snow-night.png',
+    'sleet.png': 'sleet-night.png',
+    'fog.png': 'fog-night.png',
+    'hail.png': 'hail-night.png',
+    'thunderstorms.png': 'thunderstorms-night.png',
+    'thunderstorms-rain.png': 'thunderstorms-rain-night.png',
+    'wind.png': 'wind-night.png',
+    'weather-alert.png': 'weather-alert-night.png',
+  };
+
+  function isNightForecastDateTime(dt) {
+    var d = new Date(dt);
+    if (isNaN(d.getTime())) return false;
+    var h = d.getHours();
+    return h >= 18 || h < 6;
+  }
+
+  function inferNightVariantImage(path) {
+    if (!path) return '';
+    var m = String(path).match(/^(.*\/)?([^\/]+)$/);
+    if (!m) return '';
+    var dir = m[1] || '';
+    var file = m[2] || '';
+    var nightFile = WEATHER_CONDITION_NIGHT_IMAGE_BY_DAY_FILE[file];
+    if (!nightFile) return '';
+    return dir + nightFile;
+  }
+
+  function getWeatherConditionImage(w, cond, forecastDt) {
     var images = w.condition_images || null;
     if (!images) return '';
     var key = cond || '';
-    return images[key] || images.default || '';
+    var isNight = isNightForecastDateTime(forecastDt);
+    var keyTime = key + (isNight ? '_night' : '_day');
+
+    // Priority:
+    // 1) explicit condition_day/condition_night keys
+    // 2) object value { day: '...', night: '...' }
+    // 3) inferred night variant for existing flat day filename maps
+    // 4) plain condition key/default
+    if (images[keyTime]) return images[keyTime];
+
+    if (images[key] && typeof images[key] === 'object') {
+      if (isNight && images[key].night) return images[key].night;
+      if (!isNight && images[key].day) return images[key].day;
+    }
+
+    if (isNight && typeof images[key] === 'string') {
+      var inferred = inferNightVariantImage(images[key]);
+      if (inferred) return inferred;
+    }
+
+    if (images[key]) return images[key];
+    if (isNight && images.default_night) return images.default_night;
+    if (!isNight && images.default_day) return images.default_day;
+    return images.default || '';
   }
 
   function renderWeatherConditionImage(parent, url, condition, sizePx) {
@@ -6022,11 +7354,33 @@
     var d = new Date(dt);
     if (isNaN(d.getTime())) return '';
     var daysShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    var daysFull  = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    if (fmt === 'date')      return d.getDate() + ' ' + months[d.getMonth()];
+    var daysFull = [
+      'Sunday',
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+    ];
+    var months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    if (fmt === 'date') return d.getDate() + ' ' + months[d.getMonth()];
     if (fmt === 'day_short') return daysShort[d.getDay()];
-    if (fmt === 'time')      return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':00';
+    if (fmt === 'time')
+      return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':00';
     return daysFull[d.getDay()]; // 'day' default
   }
 
@@ -6041,35 +7395,36 @@
     return isNaN(n) ? null : n;
   }
 
-  var WEATHER_TEMP_METRICS = { 'temperature': true, 'templow': true };
+  var WEATHER_TEMP_METRICS = { temperature: true, templow: true };
 
   function formatWeatherMetric(val, metric) {
-    if (WEATHER_TEMP_METRICS[metric])      return formatWeatherTemp(val);
-    if (metric === 'wind_speed')    return Math.round(val) + 'km/h';
-    if (metric === 'wind_bearing')  return Math.round(val) + '\u00b0';
-    if (metric === 'humidity')      return Math.round(val) + '%';
+    if (WEATHER_TEMP_METRICS[metric]) return formatWeatherTemp(val);
+    if (metric === 'wind_speed') return Math.round(val) + 'km/h';
+    if (metric === 'wind_bearing') return Math.round(val) + '\u00b0';
+    if (metric === 'humidity') return Math.round(val) + '%';
     if (metric === 'precipitation') return val.toFixed(1) + 'mm';
-    if (metric === 'uv_index')      return String(Math.round(val));
+    if (metric === 'uv_index') return String(Math.round(val));
     return val % 1 === 0 ? String(val) : val.toFixed(1);
   }
 
   function renderWeatherForecast(el, w) {
     el.className += ' widget-weather-forecast';
-    el.style.background   = resolveColor(w.background || 'surface');
+    el.style.background = resolveColor(w.background || 'surface');
     el.style.borderRadius = (w.radius !== undefined ? w.radius : 8) + 'px';
-    el.style.overflow     = 'hidden';
+    el.style.overflow = 'hidden';
 
     var inner = document.createElement('div');
-    inner.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+    inner.style.cssText =
+      'position:absolute;top:0;left:0;width:100%;height:100%;';
     el.appendChild(inner);
 
     // Loading placeholder
-    inner.style.display        = 'flex';
-    inner.style.alignItems     = 'center';
+    inner.style.display = 'flex';
+    inner.style.alignItems = 'center';
     inner.style.justifyContent = 'center';
-    inner.style.fontSize       = '12px';
-    inner.style.color          = resolveColor('text_muted');
-    inner.textContent          = 'loading\u2026';
+    inner.style.fontSize = '12px';
+    inner.style.color = resolveColor('text_muted');
+    inner.textContent = 'loading\u2026';
 
     var timerRef = { id: null, pendingIds: [] };
     activePageTimers.push(timerRef);
@@ -6077,7 +7432,7 @@
     fetchWeatherForecast(w, inner, timerRef, 20);
 
     var refreshMs = (w.refresh_interval || 1800) * 1000;
-    timerRef.id = setInterval(function() {
+    timerRef.id = setInterval(function () {
       fetchWeatherForecast(w, inner, timerRef, 0);
     }, refreshMs);
   }
@@ -6089,13 +7444,15 @@
         return;
       }
       if (retries > 0) {
-        setTimeout(function() { fetchWeatherForecast(w, inner, timerRef, retries - 1); }, 2000);
+        setTimeout(function () {
+          fetchWeatherForecast(w, inner, timerRef, retries - 1);
+        }, 2000);
       }
       return;
     }
     var id = msgId++;
     timerRef.pendingIds.push(id);
-    pendingRequests[id] = function(result) {
+    pendingRequests[id] = function (result) {
       var idx = timerRef.pendingIds.indexOf(id);
       if (idx !== -1) timerRef.pendingIds.splice(idx, 1);
       if (!result) return;
@@ -6105,21 +7462,29 @@
     };
     trackWsRequest(id, 'weather.get_forecasts', false);
     wsSend({
-      id:           id,
-      type:         'call_service',
-      domain:       'weather',
-      service:      'get_forecasts',
+      id: id,
+      type: 'call_service',
+      domain: 'weather',
+      service: 'get_forecasts',
       service_data: { entity_id: w.entity, type: w.forecast_type || 'daily' },
-      return_response: true
+      return_response: true,
     });
   }
 
   function extractWeatherForecast(result, entityId) {
     if (!result) return [];
-    if (result.response && result.response[entityId] && isArray(result.response[entityId].forecast)) {
+    if (
+      result.response &&
+      result.response[entityId] &&
+      isArray(result.response[entityId].forecast)
+    ) {
       return result.response[entityId].forecast;
     }
-    if (result.service_response && result.service_response[entityId] && isArray(result.service_response[entityId].forecast)) {
+    if (
+      result.service_response &&
+      result.service_response[entityId] &&
+      isArray(result.service_response[entityId].forecast)
+    ) {
       return result.service_response[entityId].forecast;
     }
     if (result[entityId] && isArray(result[entityId].forecast)) {
@@ -6136,171 +7501,145 @@
       null,
       { entity_id: w.entity, type: w.forecast_type || 'daily' },
       true,
-      function(result) {
+      function (result) {
         var forecast = extractWeatherForecast(result, w.entity);
         if (!forecast.length) return;
         updateWeatherForecast(inner, w, forecast);
       },
-      'weather.get_forecasts'
+      'weather.get_forecasts',
     );
   }
 
   function updateWeatherForecast(inner, w, forecast) {
-    var totalW     = w.w || 300;
-    var totalH     = w.h || 160;
-    var slots      = Math.min(w.slots || 6, forecast.length);
-    var slotW      = Math.floor(totalW / slots);
-    var labelFmt   = w.label_format || ((w.forecast_type === 'hourly') ? 'time' : 'day');
-    var extraRow   = (w.extra_row && w.extra_row.length) ? w.extra_row : [];
-    var showLabels = (w.show_labels !== false);
-    var showIcons  = (w.show_icons  !== false);
-    var showChart  = (w.show_chart  !== false);
-    var series     = w.series || [];
-    var showExtraIcons = (w.extra_row_icons !== false);
+    var totalW = w.w || 300;
+    var totalH = w.h || 160;
+    var slots = Math.min(w.slots || 6, forecast.length);
+    var maxSlotsPerLine = w.max_slots_per_line || slots;
+    var effectiveSlotsPerLine = Math.min(slots, maxSlotsPerLine);
+    var borderWidth = 2; // 1px left border + 1px right border per slot
+    var slotW = Math.floor(
+      (totalW - borderWidth * effectiveSlotsPerLine) / effectiveSlotsPerLine,
+    );
+    var labelFmt =
+      w.label_format || (w.forecast_type === 'hourly' ? 'time' : 'day');
+    var extraRow = w.extra_row && w.extra_row.length ? w.extra_row : [];
+    var showLabels = w.show_labels !== false;
+    var showIcons = w.show_icons !== false;
+    var showChart = w.show_chart !== false;
+    var series = w.series || [];
+    var showExtraIcons = w.extra_row_icons !== false;
 
-    var scaleRaw = (w.forecast_scale !== undefined) ? w.forecast_scale : 1;
+    var scaleRaw = w.forecast_scale !== undefined ? w.forecast_scale : 1;
     var scale = parseFloat(scaleRaw);
     if (isNaN(scale) || scale <= 0) scale = 1;
-    function sc(px) { return Math.max(1, Math.round(px * scale)); }
+    function sc(px) {
+      return Math.max(1, Math.round(px * scale));
+    }
 
-    var showLegend = (w.show_legend === true) && series.length > 0 && showChart;
-    var LABEL_H   = showLabels ? sc(18) : 0;
-    var ICON_H    = showIcons  ? sc(38) : 0;
-    var LEGEND_H  = showLegend ? sc(24) : 0;
-    var EXTRA_ITEM_H = extraRow.length > 2 ? sc(16) : (extraRow.length > 1 ? sc(18) : sc(22));
-    var EXTRA_H = extraRow.length > 0 ? (EXTRA_ITEM_H * extraRow.length) : 0;
+    var showLegend = w.show_legend === true && series.length > 0 && showChart;
+    var LABEL_H = showLabels ? sc(18) : 0;
+    var ICON_H = showIcons ? sc(38) : 0;
+    var LEGEND_H = showLegend ? sc(24) : 0;
+    var EXTRA_ITEM_H =
+      extraRow.length > 2 ? sc(16) : extraRow.length > 1 ? sc(18) : sc(22);
+    var EXTRA_H = extraRow.length > 0 ? EXTRA_ITEM_H * extraRow.length : 0;
     var CHART_H = Math.max(0, totalH - LABEL_H - ICON_H - LEGEND_H - EXTRA_H);
     if (!showChart) CHART_H = 0;
 
-    var labelColor    = resolveColor(w.label_color    || 'text_muted');
-    var iconColor     = resolveColor(w.icon_color     || 'text');
-    var extraColor    = resolveColor(w.extra_row_color || 'text_muted');
-    var dividerColor  = resolveColor(w.divider_color  || 'surface2');
+    var labelColor = resolveColor(w.label_color || 'text_muted');
+    var iconColor = resolveColor(w.icon_color || 'text');
+    var extraColor = resolveColor(w.extra_row_color || 'text_muted');
+    var dividerColor = resolveColor(w.divider_color || 'surface2');
 
     inner.innerHTML = '';
-    inner.style.display = '';
+    inner.style.display = 'block';
+    inner.style.whiteSpace = 'normal';
+    inner.style.fontSize = '0'; // Eliminate whitespace between inline-block elements
 
-    // -- Labels row --
-    if (showLabels) {
-      for (var i = 0; i < slots; i++) {
+    // Create wrapper divs for each slot with inline-block layout
+    for (var i = 0; i < slots; i++) {
+      var slotWrapper = document.createElement('div');
+      slotWrapper.style.cssText =
+        'display:inline-block;vertical-align:top;width:' +
+        slotW +
+        'px;' +
+        'font-size:' +
+        sc(11) +
+        'px;position:relative;box-sizing:border-box;' +
+        'border:1px solid ' +
+        dividerColor +
+        ';';
+
+      // -- Label --
+      if (showLabels) {
         var lbl = document.createElement('div');
-        lbl.style.cssText = 'position:absolute;top:0;left:' + (i * slotW) + 'px;width:' + slotW + 'px;' +
-          'height:' + LABEL_H + 'px;line-height:' + LABEL_H + 'px;text-align:center;' +
-          'font-size:' + sc(11) + 'px;color:' + labelColor + ';overflow:hidden;white-space:nowrap;';
+        lbl.style.cssText =
+          'height:' +
+          LABEL_H +
+          'px;line-height:' +
+          LABEL_H +
+          'px;text-align:center;' +
+          'font-size:' +
+          sc(11) +
+          'px;color:' +
+          labelColor +
+          ';overflow:hidden;white-space:nowrap;';
         lbl.textContent = formatWeatherLabel(forecast[i].datetime, labelFmt);
-        inner.appendChild(lbl);
+        slotWrapper.appendChild(lbl);
       }
-    }
 
-    // -- Icons row --
-    if (showIcons) {
-      var iconTop = LABEL_H;
-      for (var i = 0; i < slots; i++) {
+      // -- Icon --
+      if (showIcons) {
         var iconDiv = document.createElement('div');
-        iconDiv.style.cssText = 'position:absolute;top:' + iconTop + 'px;left:' + (i * slotW) + 'px;' +
-          'width:' + slotW + 'px;height:' + ICON_H + 'px;line-height:' + ICON_H + 'px;' +
-          'text-align:center;font-size:' + Math.round(ICON_H * 0.55) + 'px;color:' + iconColor + ';';
+        iconDiv.style.cssText =
+          'height:' +
+          ICON_H +
+          'px;line-height:' +
+          ICON_H +
+          'px;' +
+          'text-align:center;font-size:' +
+          Math.round(ICON_H * 0.55) +
+          'px;color:' +
+          iconColor +
+          ';';
         var condition = forecast[i].condition || '';
-        var conditionImage = getWeatherConditionImage(w, condition);
+        var conditionImage = getWeatherConditionImage(
+          w,
+          condition,
+          forecast[i].datetime,
+        );
         if (conditionImage) {
-          var imgScale = w.condition_image_scale !== undefined ? parseFloat(w.condition_image_scale) : 0.72;
+          var imgScale =
+            w.condition_image_scale !== undefined
+              ? parseFloat(w.condition_image_scale)
+              : 0.72;
           if (isNaN(imgScale) || imgScale <= 0) imgScale = 0.72;
-          renderWeatherConditionImage(iconDiv, conditionImage, condition, Math.round(ICON_H * imgScale));
+          renderWeatherConditionImage(
+            iconDiv,
+            conditionImage,
+            condition,
+            Math.round(ICON_H * imgScale),
+          );
         } else {
           setContent(iconDiv, '[' + getWeatherConditionIcon(condition) + ']');
         }
-        inner.appendChild(iconDiv);
-      }
-    }
-
-    // -- Chart area --
-    if (showChart && CHART_H > 20 && series.length > 0) {
-      var chartTop = LABEL_H + ICON_H;
-      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('width',  totalW);
-      svg.setAttribute('height', CHART_H);
-      svg.style.cssText = 'position:absolute;top:' + chartTop + 'px;left:0;overflow:visible;';
-      inner.appendChild(svg);
-
-      var PAD_TOP = sc(14);
-      var PAD_BOT = sc(4);
-      var innerH  = CHART_H - PAD_TOP - PAD_BOT;
-      if (innerH < 4) innerH = 4;
-
-      // Collect values for all series
-      var seriesVals = [];
-      for (var s = 0; s < series.length; s++) {
-        var sv = [];
-        for (var i = 0; i < slots; i++) {
-          sv.push(parseWeatherNumber(forecast[i][series[s].metric]));
-        }
-        seriesVals.push(sv);
+        slotWrapper.appendChild(iconDiv);
       }
 
-      // Shared scale for temperature-family metrics
-      var tempAllVals = [];
-      for (var s = 0; s < series.length; s++) {
-        if (WEATHER_TEMP_METRICS[series[s].metric]) {
-          for (var i = 0; i < seriesVals[s].length; i++) {
-            if (seriesVals[s][i] !== null) tempAllVals.push(seriesVals[s][i]);
-          }
-        }
-      }
-      var tempMin = tempAllVals.length ? Math.min.apply(null, tempAllVals) : 0;
-      var tempMax = tempAllVals.length ? Math.max.apply(null, tempAllVals) : 1;
-      for (var s = 0; s < series.length; s++) {
-        if (WEATHER_TEMP_METRICS[series[s].metric]) {
-          if (series[s].min !== undefined) tempMin = Math.min(tempMin, parseFloat(series[s].min));
-          if (series[s].max !== undefined) tempMax = Math.max(tempMax, parseFloat(series[s].max));
-        }
-      }
-      var tempRange = (tempMax - tempMin) || 1;
+      // -- Chart area for this slot --
+      if (showChart && CHART_H > 20 && series.length > 0) {
+        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', slotW);
+        svg.setAttribute('height', CHART_H);
+        svg.style.cssText = 'display:block;overflow:visible;';
 
-      // Precompute per-series scale bounds for non-temp series
-      var seriesScale = [];
-      for (var s = 0; s < series.length; s++) {
-        if (WEATHER_TEMP_METRICS[series[s].metric]) { seriesScale.push(null); continue; }
-        var valid = [];
-        for (var i = 0; i < seriesVals[s].length; i++) {
-          if (seriesVals[s][i] !== null) valid.push(seriesVals[s][i]);
-        }
-        var mn = series[s].min !== undefined ? parseFloat(series[s].min) : (valid.length ? Math.min.apply(null, valid) : 0);
-        var mx = series[s].max !== undefined ? parseFloat(series[s].max) : (valid.length ? Math.max.apply(null, valid) : 1);
-        seriesScale.push({ mn: mn, mx: mx, rng: (mx - mn) || 1,
-          topPad: series[s].max !== undefined ? 0 : sc(6),
-          botPad: series[s].min !== undefined ? 0 : sc(6) });
-      }
+        var PAD_TOP = sc(14);
+        var PAD_BOT = sc(4);
+        var innerH = CHART_H - PAD_TOP - PAD_BOT;
+        if (innerH < 4) innerH = 4;
 
-      // Compute Y coordinate for a value in a given series, clamped to chart bounds
-      function wfY(val, sIdx) {
-        var y;
-        if (WEATHER_TEMP_METRICS[series[sIdx].metric]) {
-          y = PAD_TOP + (1 - (val - tempMin) / tempRange) * innerH;
-        } else {
-          var sc2 = seriesScale[sIdx];
-          if (!sc2) return PAD_TOP + Math.round(innerH / 2);
-          y = PAD_TOP + sc2.topPad + (1 - (val - sc2.mn) / sc2.rng) * (innerH - sc2.topPad - sc2.botPad);
-        }
-        return Math.round(Math.max(PAD_TOP, Math.min(PAD_TOP + innerH, y)));
-      }
-
-      // Hidden series state (index -> true), pre-populated from config
-      var hiddenSeries = {};
-      for (var s = 0; s < series.length; s++) {
-        if (series[s].hidden) hiddenSeries[s] = true;
-      }
-
-      function buildChartSVG() {
+        // For this slot, render data for all series
         var parts = [];
-
-        // Slot dividers
-        if (w.dividers !== false) {
-          for (var i = 1; i < slots; i++) {
-            var dx = i * slotW;
-            parts.push('<line x1="' + dx + '" y1="0" x2="' + dx + '" y2="' + CHART_H +
-              '" stroke="' + dividerColor + '" stroke-width="1"/>');
-          }
-        }
 
         // Render bars first (behind lines), then lines
         var renderOrder = [];
@@ -6311,178 +7650,268 @@
 
         for (var ro = 0; ro < renderOrder.length; ro++) {
           var s = renderOrder[ro];
-          if (hiddenSeries[s]) continue;
-          var sr     = series[s];
-          var sVals  = seriesVals[s];
+          var sr = series[s];
           var sColor = resolveColor(sr.color || 'primary');
           var sStyle = sr.style || 'line';
+          var val = parseWeatherNumber(forecast[i][sr.metric]);
+          if (val === null) continue;
+
+          var valid = [];
+          for (var j = 0; j < slots; j++) {
+            var v = parseWeatherNumber(forecast[j][sr.metric]);
+            if (v !== null) valid.push(v);
+          }
+          var mn =
+            sr.min !== undefined
+              ? parseFloat(sr.min)
+              : valid.length
+                ? Math.min.apply(null, valid)
+                : 0;
+          var mx =
+            sr.max !== undefined
+              ? parseFloat(sr.max)
+              : valid.length
+                ? Math.max.apply(null, valid)
+                : 1;
+          var rng = mx - mn || 1;
 
           if (sStyle === 'bar') {
-            var validV = [];
-            for (var i = 0; i < sVals.length; i++) {
-              if (sVals[i] !== null) validV.push(sVals[i]);
-            }
-            var barMin = sr.min !== undefined ? parseFloat(sr.min) : 0;
-            var barMax = sr.max !== undefined ? parseFloat(sr.max) : (validV.length ? Math.max.apply(null, validV) : 0);
-            var barRange = (barMax - barMin) || 1;
-            var barW = Math.round(slotW * 0.5);
+            var clampedVal = Math.min(val, mx);
+            var bh = Math.round(((clampedVal - mn) / rng) * innerH);
+            if (bh < 1) bh = 1;
+            var by = PAD_TOP + innerH - bh;
+            var barW = Math.round(slotW * 0.6);
             var barOff = Math.round((slotW - barW) / 2);
-            for (var i = 0; i < slots; i++) {
-              if (sVals[i] === null || sVals[i] <= 0) continue;
-              var clampedVal = Math.min(sVals[i], barMax);
-              var bh = Math.round(((clampedVal - barMin) / barRange) * innerH);
-              if (bh < 1) bh = 1;
-              var by = PAD_TOP + innerH - bh;
-              parts.push('<rect x="' + (i * slotW + barOff) + '" y="' + by + '" width="' + barW +
-                '" height="' + bh + '" fill="' + sColor + '" rx="2"/>');
-              parts.push('<text x="' + (i * slotW + slotW / 2) + '" y="' + (by - 3) +
-                '" text-anchor="middle" font-size="' + sc(10) + '" fill="' + sColor + '">' +
-                formatWeatherMetric(sVals[i], sr.metric) + '</text>');
-            }
-
+            parts.push(
+              '<rect x="' +
+                barOff +
+                '" y="' +
+                by +
+                '" width="' +
+                barW +
+                '" height="' +
+                bh +
+                '" fill="' +
+                sColor +
+                '" rx="2"/>',
+            );
+            parts.push(
+              '<text x="' +
+                Math.round(slotW / 2) +
+                '" y="' +
+                (by - 3) +
+                '" text-anchor="middle" font-size="' +
+                sc(9) +
+                '" fill="' +
+                sColor +
+                '">' +
+                formatWeatherMetric(val, sr.metric) +
+                '</text>',
+            );
           } else {
-            var dashAttr = sStyle === 'line_dashed' ? ' stroke-dasharray="5,4"' : '';
-            var points = [];
-            for (var i = 0; i < slots; i++) {
-              var cx = Math.round(i * slotW + slotW / 2);
-              if (sVals[i] !== null) {
-                points.push({ x: cx, y: wfY(sVals[i], s), valid: true });
-              } else {
-                points.push({ x: cx, y: 0, valid: false });
-              }
-            }
-            var seg = [];
-            for (var i = 0; i < points.length; i++) {
-              if (points[i].valid) {
-                seg.push(points[i].x + ',' + points[i].y);
-              } else if (seg.length >= 2) {
-                parts.push('<polyline points="' + seg.join(' ') + '" fill="none" stroke="' + sColor +
-                  '" stroke-width="2.5" stroke-linecap="round"' + dashAttr + '/>');
-                seg = [];
-              } else { seg = []; }
-            }
-            if (seg.length >= 2) {
-              parts.push('<polyline points="' + seg.join(' ') + '" fill="none" stroke="' + sColor +
-                '" stroke-width="2.5" stroke-linecap="round"' + dashAttr + '/>');
-            }
-            for (var i = 0; i < points.length; i++) {
-              if (!points[i].valid) continue;
-              var px = points[i].x; var py = points[i].y;
-              var flipUp = (py > PAD_TOP + innerH * 0.6);
-              var labelY = flipUp ? (py - sc(11)) : (py + sc(10) + sc(9));
-              parts.push('<text x="' + px + '" y="' + labelY +
-                '" text-anchor="middle" font-size="' + sc(10) + '" font-weight="600" fill="' + sColor + '">' +
-                formatWeatherMetric(sVals[i], sr.metric) + '</text>');
-              parts.push('<circle cx="' + px + '" cy="' + py + '" r="4" fill="' + sColor + '"/>');
-            }
+            var y = PAD_TOP + (1 - (val - mn) / rng) * innerH;
+            y = Math.round(Math.max(PAD_TOP, Math.min(PAD_TOP + innerH, y)));
+            var dashAttr =
+              sStyle === 'line_dashed' ? ' stroke-dasharray="5,4"' : '';
+            var cx = Math.round(slotW / 2);
+            parts.push(
+              '<circle cx="' +
+                cx +
+                '" cy="' +
+                y +
+                '" r="3" fill="' +
+                sColor +
+                '"/>',
+            );
+            parts.push(
+              '<text x="' +
+                cx +
+                '" y="' +
+                (y - sc(8)) +
+                '" text-anchor="middle" font-size="' +
+                sc(9) +
+                '" fill="' +
+                sColor +
+                '">' +
+                formatWeatherMetric(val, sr.metric) +
+                '</text>',
+            );
           }
         }
 
         svg.innerHTML = parts.join('');
+        slotWrapper.appendChild(svg);
       }
 
-      buildChartSVG();
-
-      // -- Legend --
-      if (showLegend) {
-        var legendTop = LABEL_H + ICON_H + CHART_H;
-        var legendEl = document.createElement('div');
-        legendEl.style.cssText = 'position:absolute;top:' + legendTop + 'px;left:0;width:' + totalW + 'px;' +
-          'height:' + LEGEND_H + 'px;display:flex;align-items:center;justify-content:center;' +
-          'gap:' + sc(14) + 'px;';
-        inner.appendChild(legendEl);
-
-        for (var s = 0; s < series.length; s++) {
-          (function(sIdx) {
-            var sr = series[sIdx];
-            var sColor = resolveColor(sr.color || 'primary');
-            var sStyle = sr.style || 'line';
-            var sLabel = sr.label || (sr.metric.charAt(0).toUpperCase() + sr.metric.slice(1).replace(/_/g, ' '));
-
-            var item = document.createElement('div');
-            item.style.cssText = 'display:flex;align-items:center;gap:' + sc(4) + 'px;' +
-              'cursor:pointer;user-select:none;';
-
-            // Indicator SVG
-            var indW = sc(20); var indH = sc(10);
-            var indSvg;
-            if (sStyle === 'bar') {
-              indSvg = '<svg width="' + indW + '" height="' + indH + '">' +
-                '<rect x="' + Math.round(indW * 0.2) + '" y="1" width="' + Math.round(indW * 0.6) + '" height="' + (indH - 2) + '" ' +
-                'fill="' + sColor + '" fill-opacity="0.7" rx="2"/></svg>';
-            } else {
-              var dash = sStyle === 'line_dashed' ? ' stroke-dasharray="4,3"' : '';
-              var mid = Math.round(indH / 2);
-              indSvg = '<svg width="' + indW + '" height="' + indH + '">' +
-                '<line x1="0" y1="' + mid + '" x2="' + indW + '" y2="' + mid + '" stroke="' + sColor + '" stroke-width="2.5" stroke-linecap="round"' + dash + '/>' +
-                '<circle cx="' + Math.round(indW / 2) + '" cy="' + mid + '" r="3" fill="' + sColor + '"/></svg>';
-            }
-            item.innerHTML = indSvg;
-
-            var lbl = document.createElement('span');
-            lbl.style.cssText = 'font-size:' + sc(10) + 'px;color:' + sColor + ';';
-            lbl.textContent = sLabel;
-            item.appendChild(lbl);
-
-            if (hiddenSeries[sIdx]) item.style.opacity = '0.35';
-
-            item.addEventListener('click', function() {
-              hiddenSeries[sIdx] = !hiddenSeries[sIdx];
-              item.style.opacity = hiddenSeries[sIdx] ? '0.35' : '1';
-              buildChartSVG();
-            });
-
-            legendEl.appendChild(item);
-          })(s);
-        }
-      }
-    }
-
-    // -- Extra row --
-    if (extraRow.length > 0) {
-      var extraTop = LABEL_H + ICON_H + (showChart ? CHART_H : 0) + LEGEND_H;
-      var itemH = EXTRA_ITEM_H;
-      for (var r = 0; r < extraRow.length; r++) {
-        var metric = extraRow[r];
-        for (var i = 0; i < slots; i++) {
+      // -- Extra row items --
+      if (extraRow.length > 0) {
+        var itemH = EXTRA_ITEM_H;
+        for (var r = 0; r < extraRow.length; r++) {
+          var metric = extraRow[r];
           var cell = document.createElement('div');
-          cell.style.cssText = 'position:absolute;top:' + (extraTop + r * itemH) + 'px;left:' + (i * slotW) + 'px;' +
-            'width:' + slotW + 'px;height:' + itemH + 'px;line-height:' + itemH + 'px;' +
-            'text-align:center;font-size:' + sc(extraRow.length > 2 ? 9 : extraRow.length > 1 ? 10 : 11) + 'px;color:' + extraColor + ';' +
-            'overflow:hidden;white-space:nowrap;' +
-            (w.dividers !== false && i < slots - 1 ? 'border-right:1px solid ' + dividerColor + ';' : '');
+          cell.style.cssText =
+            'height:' +
+            itemH +
+            'px;line-height:' +
+            itemH +
+            'px;' +
+            'text-align:center;font-size:' +
+            sc(extraRow.length > 2 ? 9 : extraRow.length > 1 ? 10 : 11) +
+            'px;color:' +
+            extraColor +
+            ';' +
+            'overflow:hidden;white-space:nowrap;';
           var icon = WF_EXTRA_ICON[metric];
           var rawVal = forecast[i][metric];
           var valStr = '--';
           if (metric === 'condition') {
             var condition = forecast[i].condition || '';
-            var conditionImage = getWeatherConditionImage(w, condition);
+            var conditionImage = getWeatherConditionImage(
+              w,
+              condition,
+              forecast[i].datetime,
+            );
             if (conditionImage) {
-              renderWeatherConditionImage(cell, conditionImage, condition, Math.round(itemH * 0.9));
+              renderWeatherConditionImage(
+                cell,
+                conditionImage,
+                condition,
+                Math.round(itemH * 0.9),
+              );
             } else {
               setContent(cell, '[' + getWeatherConditionIcon(condition) + ']');
             }
-            inner.appendChild(cell);
+            slotWrapper.appendChild(cell);
             continue;
           }
           var n = parseWeatherNumber(rawVal);
           if (n !== null) valStr = formatWeatherMetric(n, metric);
-          var content = (showExtraIcons && icon) ? ('[' + icon + ']&nbsp;' + valStr) : valStr;
+          var content =
+            showExtraIcons && icon ? '[' + icon + ']&nbsp;' + valStr : valStr;
           setContent(cell, content);
-          inner.appendChild(cell);
+          slotWrapper.appendChild(cell);
         }
       }
+
+      inner.appendChild(slotWrapper);
     }
+
+    // -- Legend --
+    if (showLegend) {
+      var legendEl = document.createElement('div');
+      legendEl.style.cssText =
+        'display:block;width:100%;font-size:' +
+        sc(11) +
+        'px;' +
+        'margin-top:' +
+        sc(8) +
+        'px;text-align:center;';
+      inner.appendChild(legendEl);
+
+      for (var s = 0; s < series.length; s++) {
+        (function (sIdx) {
+          var sr = series[sIdx];
+          var sColor = resolveColor(sr.color || 'primary');
+          var sStyle = sr.style || 'line';
+          var sLabel =
+            sr.label ||
+            sr.metric.charAt(0).toUpperCase() +
+              sr.metric.slice(1).replace(/_/g, ' ');
+
+          var item = document.createElement('span');
+          item.style.cssText =
+            'display:inline-block;margin:' +
+            sc(2) +
+            'px ' +
+            sc(4) +
+            'px;' +
+            'vertical-align:middle;user-select:none;';
+
+          // Indicator SVG
+          var indW = sc(20);
+          var indH = sc(10);
+          var indSvg;
+          if (sStyle === 'bar') {
+            indSvg =
+              '<svg width="' +
+              indW +
+              '" height="' +
+              indH +
+              '" style="display:inline-block;vertical-align:middle;margin-right:' +
+              sc(2) +
+              'px">' +
+              '<rect x="' +
+              Math.round(indW * 0.2) +
+              '" y="1" width="' +
+              Math.round(indW * 0.6) +
+              '" height="' +
+              (indH - 2) +
+              '" ' +
+              'fill="' +
+              sColor +
+              '" fill-opacity="0.7" rx="2"/></svg>';
+          } else {
+            var dash =
+              sStyle === 'line_dashed' ? ' stroke-dasharray="4,3"' : '';
+            var mid = Math.round(indH / 2);
+            indSvg =
+              '<svg width="' +
+              indW +
+              '" height="' +
+              indH +
+              '" style="display:inline-block;vertical-align:middle;margin-right:' +
+              sc(2) +
+              'px">' +
+              '<line x1="0" y1="' +
+              mid +
+              '" x2="' +
+              indW +
+              '" y2="' +
+              mid +
+              '" stroke="' +
+              sColor +
+              '" stroke-width="2.5" stroke-linecap="round"' +
+              dash +
+              '/>' +
+              '<circle cx="' +
+              Math.round(indW / 2) +
+              '" cy="' +
+              mid +
+              '" r="3" fill="' +
+              sColor +
+              '"/></svg>';
+          }
+          item.innerHTML = indSvg;
+
+          var lbl = document.createElement('span');
+          lbl.style.cssText =
+            'font-size:' +
+            sc(10) +
+            'px;color:' +
+            sColor +
+            ';margin-left:' +
+            sc(2) +
+            'px;';
+          lbl.textContent = sLabel;
+          item.appendChild(lbl);
+
+          legendEl.appendChild(item);
+        })(s);
+      }
+    }
+
+    // Reset font-size for inner text content
+    inner.style.fontSize = 'initial';
   }
 
   // -- Clock --
   function renderClock(el, w) {
     el.className += ' widget-clock';
-    el.style.color      = resolveColor(w.color      || 'text');
+    el.style.color = resolveColor(w.color || 'text');
     el.style.background = resolveColor(w.background || 'transparent');
-    el.style.fontSize   = (w.font_size || 22) + 'px';
-    el.style.padding    = '0 8px';
-    el.textContent      = '--:--';
+    el.style.fontSize = (w.font_size || 22) + 'px';
+    el.style.padding = '0 8px';
+    el.textContent = '--:--';
   }
 
   // ---- Value formatting -------------------------------------
@@ -6530,7 +7959,6 @@
           ? Math.round(num) + ' [small:w]'
           : (num / 1000).toFixed(1) + ' [small:kW]';
 
-
       case 'kwh':
         if (isNaN(num)) return '--';
         return num.toFixed(1) + ' [small:kWh]';
@@ -6541,11 +7969,15 @@
 
       case 'temp_c':
         if (isNaN(num)) return '--';
-        return (num % 1 === 0 ? Math.round(num) : num.toFixed(1)) + '[small:°C]';
+        return (
+          (num % 1 === 0 ? Math.round(num) : num.toFixed(1)) + '[small:°C]'
+        );
 
       case 'temp_f':
         if (isNaN(num)) return '--';
-        return (num % 1 === 0 ? Math.round(num) : num.toFixed(1)) + '[small:°F]';
+        return (
+          (num % 1 === 0 ? Math.round(num) : num.toFixed(1)) + '[small:°F]'
+        );
 
       default:
         return prefix + val;
@@ -6559,7 +7991,7 @@
   var templateExprCache = {};
 
   function hasTemplate(str) {
-    return (str && String(str).indexOf('{{') !== -1);
+    return str && String(str).indexOf('{{') !== -1;
   }
 
   // applyTemplate(str, state, state2)
@@ -6570,7 +8002,7 @@
     var s = String(str);
     if (s.indexOf('{{') === -1) return s;
 
-    return s.replace(/\{\{([\s\S]*?)\}\}/g, function(_, expr) {
+    return s.replace(/\{\{([\s\S]*?)\}\}/g, function (_, expr) {
       var val = evaluateExpression(expr, state, state2);
       if (val === null || val === undefined) return '';
       return String(val);
@@ -6592,9 +8024,19 @@
     if (!fn) {
       try {
         fn = new Function(
-          'state', 'state_str', 'attr', 'round', 'min', 'max', 'abs', 'floor', 'ceil',
-          'state2', 'state_str2', 'attr2',
-          '"use strict"; return (' + key + ');'
+          'state',
+          'state_str',
+          'attr',
+          'round',
+          'min',
+          'max',
+          'abs',
+          'floor',
+          'ceil',
+          'state2',
+          'state_str2',
+          'attr2',
+          '"use strict"; return (' + key + ');',
         );
       } catch (e) {
         templateExprCache[key] = null;
@@ -6607,20 +8049,32 @@
     // Primary entity bindings
     var raw = state ? state.state : null;
     var num = parseFloat(raw);
-    var stateVal = (!isNaN(num) ? num : raw);
-    var stateStr = (raw !== null && raw !== undefined) ? String(raw) : '';
+    var stateVal = !isNaN(num) ? num : raw;
+    var stateStr = raw !== null && raw !== undefined ? String(raw) : '';
     var attrs = state && state.attributes ? state.attributes : {};
 
     // Secondary entity bindings (entity2) - undefined/null when entity2 not configured
     var raw2 = state2 ? state2.state : null;
     var num2 = parseFloat(raw2);
-    var stateVal2 = (raw2 !== null && !isNaN(num2) ? num2 : raw2);
-    var stateStr2 = (raw2 !== null && raw2 !== undefined) ? String(raw2) : '';
+    var stateVal2 = raw2 !== null && !isNaN(num2) ? num2 : raw2;
+    var stateStr2 = raw2 !== null && raw2 !== undefined ? String(raw2) : '';
     var attrs2 = state2 && state2.attributes ? state2.attributes : {};
 
     try {
-      return fn(stateVal, stateStr, attrs, tmplRound, Math.min, Math.max, Math.abs, Math.floor, Math.ceil,
-                stateVal2, stateStr2, attrs2);
+      return fn(
+        stateVal,
+        stateStr,
+        attrs,
+        tmplRound,
+        Math.min,
+        Math.max,
+        Math.abs,
+        Math.floor,
+        Math.ceil,
+        stateVal2,
+        stateStr2,
+        attrs2,
+      );
     } catch (e2) {
       return '';
     }
@@ -6629,14 +8083,14 @@
   function evaluateSimpleTemplateExpression(key, state, state2) {
     var raw = state ? state.state : null;
     var num = parseFloat(raw);
-    var stateVal = (!isNaN(num) ? num : raw);
-    var stateStr = (raw !== null && raw !== undefined) ? String(raw) : '';
+    var stateVal = !isNaN(num) ? num : raw;
+    var stateStr = raw !== null && raw !== undefined ? String(raw) : '';
     var attrs = state && state.attributes ? state.attributes : {};
 
     var raw2 = state2 ? state2.state : null;
     var num2 = parseFloat(raw2);
-    var stateVal2 = (raw2 !== null && !isNaN(num2) ? num2 : raw2);
-    var stateStr2 = (raw2 !== null && raw2 !== undefined) ? String(raw2) : '';
+    var stateVal2 = raw2 !== null && !isNaN(num2) ? num2 : raw2;
+    var stateStr2 = raw2 !== null && raw2 !== undefined ? String(raw2) : '';
     var attrs2 = state2 && state2.attributes ? state2.attributes : {};
 
     if (key === 'state') return { matched: true, value: stateVal };
@@ -6644,11 +8098,13 @@
     if (key === 'state2') return { matched: true, value: stateVal2 };
     if (key === 'state_str2') return { matched: true, value: stateStr2 };
 
-    var m = key.match(/^(attr|attr2)\.([A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*)$/);
+    var m = key.match(
+      /^(attr|attr2)\.([A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*)$/,
+    );
     if (m) {
       return {
         matched: true,
-        value: getPathValue(m[1] === 'attr2' ? attrs2 : attrs, m[2])
+        value: getPathValue(m[1] === 'attr2' ? attrs2 : attrs, m[2]),
       };
     }
 
@@ -6702,17 +8158,50 @@
     var ampm = d.getHours() >= 12 ? 'PM' : 'AM';
 
     switch (fmt) {
-      case 'time_24':     return prefix + HH + ':' + MM;
-      case 'time_12':     return prefix + h12 + ':' + MM + ' ' + ampm;
-      case 'date_iso':    return prefix + yyyy + '-' + mm + '-' + dd;
-      case 'date_short':  return prefix + dd + ' ' + MONTHS_SHORT[d.getMonth()];
-      case 'datetime_24': return prefix + yyyy + '-' + mm + '-' + dd + ' ' + HH + ':' + MM;
-      case 'datetime_12': return prefix + yyyy + '-' + mm + '-' + dd + ' ' + h12 + ':' + MM + ' ' + ampm;
-      default:            return prefix + d.toISOString();
+      case 'time_24':
+        return prefix + HH + ':' + MM;
+      case 'time_12':
+        return prefix + h12 + ':' + MM + ' ' + ampm;
+      case 'date_iso':
+        return prefix + yyyy + '-' + mm + '-' + dd;
+      case 'date_short':
+        return prefix + dd + ' ' + MONTHS_SHORT[d.getMonth()];
+      case 'datetime_24':
+        return prefix + yyyy + '-' + mm + '-' + dd + ' ' + HH + ':' + MM;
+      case 'datetime_12':
+        return (
+          prefix +
+          yyyy +
+          '-' +
+          mm +
+          '-' +
+          dd +
+          ' ' +
+          h12 +
+          ':' +
+          MM +
+          ' ' +
+          ampm
+        );
+      default:
+        return prefix + d.toISOString();
     }
   }
 
-  var MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var MONTHS_SHORT = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
 
   // ---- Conditional overrides -------------------------------
   // overrides: [{ when: { logic: 'all'|'any', conditions: [...] }, set: { ... } }, ...]
@@ -6777,24 +8266,30 @@
       var pageNum = parseFloat(currentPage);
       var pageStr = String(currentPage);
       switch (cond.type) {
-        case 'above':      return (!isNaN(pageNum) && pageNum > cond.value);
-        case 'below':      return (!isNaN(pageNum) && pageNum < cond.value);
-        case 'equals':     return (pageStr === String(cond.value));
-        case 'not_equals': return (pageStr !== String(cond.value));
-        default:           return false;
+        case 'above':
+          return !isNaN(pageNum) && pageNum > cond.value;
+        case 'below':
+          return !isNaN(pageNum) && pageNum < cond.value;
+        case 'equals':
+          return pageStr === String(cond.value);
+        case 'not_equals':
+          return pageStr !== String(cond.value);
+        default:
+          return false;
       }
     }
 
     // Determine which state object to test against
-    var useSecondary = (src === 'state2' || src === 'attribute2');
+    var useSecondary = src === 'state2' || src === 'attribute2';
     var targetState = useSecondary ? haState2 : haState;
-    if (!targetState) return false;  // entity2 not configured or not yet received
+    if (!targetState) return false; // entity2 not configured or not yet received
 
     var val;
     if (src === 'attribute' || src === 'attribute2') {
-      val = (targetState.attributes && cond.attribute !== undefined)
-        ? targetState.attributes[cond.attribute]
-        : undefined;
+      val =
+        targetState.attributes && cond.attribute !== undefined
+          ? targetState.attributes[cond.attribute]
+          : undefined;
       if (val === undefined || val === null) return false;
       val = String(val);
     } else {
@@ -6803,11 +8298,16 @@
     var num = parseFloat(val);
     var str = String(val);
     switch (cond.type) {
-      case 'above':      return (!isNaN(num) && num > cond.value);
-      case 'below':      return (!isNaN(num) && num < cond.value);
-      case 'equals':     return (str === String(cond.value));
-      case 'not_equals': return (str !== String(cond.value));
-      default:           return false;
+      case 'above':
+        return !isNaN(num) && num > cond.value;
+      case 'below':
+        return !isNaN(num) && num < cond.value;
+      case 'equals':
+        return str === String(cond.value);
+      case 'not_equals':
+        return str !== String(cond.value);
+      default:
+        return false;
     }
   }
 
@@ -6822,19 +8322,25 @@
   // Supports &nbsp; (non-breaking space for icon gaps) and common entities.
   function decodeEntities(str) {
     return str
-      .replace(/&nbsp;/g,  '\u00A0')
-      .replace(/&amp;/g,   '&')
-      .replace(/&lt;/g,    '<')
-      .replace(/&gt;/g,    '>')
-      .replace(/&quot;/g,  '"');
+      .replace(/&nbsp;/g, '\u00A0')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"');
   }
 
   function setContent(el, str) {
-    if (!str) { el.textContent = ''; return; }
+    if (!str) {
+      el.textContent = '';
+      return;
+    }
 
     var re = /\[mdi:([\w-]+)\]|\[small:([^\]]+)\]/g;
-    var m  = re.exec(str);
-    if (!m) { el.textContent = decodeEntities(str); return; }  // plain text - fast path
+    var m = re.exec(str);
+    if (!m) {
+      el.textContent = decodeEntities(str);
+      return;
+    } // plain text - fast path
 
     // Split string into text, icon, and small-unit segments, preserving all whitespace.
     // Spacing is entirely the user's responsibility - put spaces in the
@@ -6843,7 +8349,9 @@
     var last = 0;
     do {
       if (m.index > last) {
-        el.appendChild(document.createTextNode(decodeEntities(str.slice(last, m.index))));
+        el.appendChild(
+          document.createTextNode(decodeEntities(str.slice(last, m.index))),
+        );
       }
       if (m[1] !== undefined) {
         var span = document.createElement('span');
@@ -6871,7 +8379,8 @@
     if (token.charAt(0) === '#' || token.indexOf('rgb') === 0) return token;
     if (token === 'transparent') return 'transparent';
     // Otherwise treat as a theme color token
-    var colors = (config && config.theme && config.theme.colors) ? config.theme.colors : {};
+    var colors =
+      config && config.theme && config.theme.colors ? config.theme.colors : {};
     return colors[token] || token;
   }
 
@@ -6885,7 +8394,9 @@
 
   function resolveLinearGradient(grad) {
     if (!grad || typeof grad !== 'object') return '';
-    var from = resolveColor(grad.from !== undefined ? grad.from : 'transparent');
+    var from = resolveColor(
+      grad.from !== undefined ? grad.from : 'transparent',
+    );
     var to = resolveColor(grad.to !== undefined ? grad.to : 'surface2');
     var angle = parseFloat(grad.angle);
     if (isNaN(angle)) angle = 180;
@@ -6894,9 +8405,19 @@
     var endPct = clampPct(grad.end_pct, 100);
     if (endPct < startPct) endPct = startPct;
 
-    return 'linear-gradient(' + angle + 'deg, ' +
-      from + ' ' + startPct + '%, ' +
-      to + ' ' + endPct + '%)';
+    return (
+      'linear-gradient(' +
+      angle +
+      'deg, ' +
+      from +
+      ' ' +
+      startPct +
+      '%, ' +
+      to +
+      ' ' +
+      endPct +
+      '%)'
+    );
   }
 
   // ---- Entity subscription ----------------------------------
@@ -6913,15 +8434,15 @@
   }
 
   function updateInternalEntity(entityId, state) {
-    var now = (new Date()).toISOString();
+    var now = new Date().toISOString();
     var obj = {
       entity_id: entityId,
       state: state,
       attributes: {
-        friendly_name: entityId
+        friendly_name: entityId,
       },
       last_changed: now,
-      last_updated: now
+      last_updated: now,
     };
     entityStates[entityId] = obj;
     notifyEntityCallbacks(entityId, obj);
@@ -6947,11 +8468,11 @@
     var entities = {};
     for (var i = 0; i < pageConfig.widgets.length; i++) {
       var w = pageConfig.widgets[i];
-      if (w.entity)          entities[w.entity]          = true;
-      if (w.entity2)         entities[w.entity2]         = true;
-      if (w.marker_entity)   entities[w.marker_entity]   = true;
+      if (w.entity) entities[w.entity] = true;
+      if (w.entity2) entities[w.entity2] = true;
+      if (w.marker_entity) entities[w.marker_entity] = true;
       if (w.snapshot_entity) entities[w.snapshot_entity] = true;
-      if (w.stream_entity)   entities[w.stream_entity]   = true;
+      if (w.stream_entity) entities[w.stream_entity] = true;
     }
 
     // Fetch current values over REST immediately. This gives older Kindle/Silk
@@ -6978,14 +8499,21 @@
   }
 
   function fetchEntityState(entityId) {
-    if (!entityId || isInternalEntity(entityId) || !haUrl || !haToken || authErrorReported) return;
+    if (
+      !entityId ||
+      isInternalEntity(entityId) ||
+      !haUrl ||
+      !haToken ||
+      authErrorReported
+    )
+      return;
 
     // Fetch a single entity's current state via REST - avoids re-fetching all states
     var url = getHaApiUrl('/api/states/' + entityId);
     var xhr = new XMLHttpRequest();
     xhr.open('GET', url, true);
     xhr.setRequestHeader('Authorization', 'Bearer ' + haToken);
-    xhr.onreadystatechange = function() {
+    xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
       if (xhr.status === 200) {
         try {
@@ -6993,17 +8521,26 @@
           entityStates[state.entity_id] = state;
           notifyEntityCallbacks(state.entity_id, state);
           markRestStateFetchSucceeded();
-        } catch(e) {
+        } catch (e) {
           reportHavenError('REST JSON ERROR', entityId + '\n' + e.message);
         }
       } else if (isAuthStatus(xhr.status)) {
-        handleRestAuthWarning('REST state fetch', entityId + '\nHTTP ' + xhr.status + '\n' + url);
+        handleRestAuthWarning(
+          'REST state fetch',
+          entityId + '\nHTTP ' + xhr.status + '\n' + url,
+        );
       } else {
-        reportHavenError('REST STATE ERROR', entityId + '\nHTTP ' + xhr.status + '\n' + url);
+        reportHavenError(
+          'REST STATE ERROR',
+          entityId + '\nHTTP ' + xhr.status + '\n' + url,
+        );
       }
     };
-    xhr.onerror = function() {
-      reportHavenError('REST STATE ERROR', entityId + '\nNetwork error\n' + url);
+    xhr.onerror = function () {
+      reportHavenError(
+        'REST STATE ERROR',
+        entityId + '\nNetwork error\n' + url,
+      );
     };
     xhr.send();
   }
@@ -7015,14 +8552,27 @@
     var xhr = new XMLHttpRequest();
     xhr.open('GET', url, true);
     xhr.setRequestHeader('Authorization', 'Bearer ' + haToken);
-    xhr.onreadystatechange = function() {
+    xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
       if (xhr.status !== 200) {
         if (isAuthStatus(xhr.status)) {
-          handleRestAuthWarning('REST states fetch', formatXhrFailure(xhr, url, 'REST states fetch returned HTTP ' + xhr.status + '.'));
+          handleRestAuthWarning(
+            'REST states fetch',
+            formatXhrFailure(
+              xhr,
+              url,
+              'REST states fetch returned HTTP ' + xhr.status + '.',
+            ),
+          );
           return;
         }
-        reportRestStatesPollFailure(formatXhrFailure(xhr, url, 'REST states fetch returned HTTP ' + xhr.status + '.'));
+        reportRestStatesPollFailure(
+          formatXhrFailure(
+            xhr,
+            url,
+            'REST states fetch returned HTTP ' + xhr.status + '.',
+          ),
+        );
         return;
       }
       try {
@@ -7039,8 +8589,10 @@
         reportHavenError('REST STATES JSON ERROR', e.message);
       }
     };
-    xhr.onerror = function() {
-      reportRestStatesPollFailure(formatXhrFailure(xhr, url, 'REST states fetch hit a network error.'));
+    xhr.onerror = function () {
+      reportRestStatesPollFailure(
+        formatXhrFailure(xhr, url, 'REST states fetch hit a network error.'),
+      );
     };
     xhr.send();
   }
@@ -7059,7 +8611,8 @@
   function updateStatesFromServiceResponse(response) {
     var states = null;
     if (isArray(response)) states = response;
-    else if (response && isArray(response.changed_states)) states = response.changed_states;
+    else if (response && isArray(response.changed_states))
+      states = response.changed_states;
     if (!states) return;
     for (var i = 0; i < states.length; i++) {
       var state = states[i];
@@ -7069,21 +8622,40 @@
     }
   }
 
-  function callServiceRest(domain, service, entityId, data, returnResponse, callback, label) {
+  function callServiceRest(
+    domain,
+    service,
+    entityId,
+    data,
+    returnResponse,
+    callback,
+    label,
+  ) {
     if (!haUrl || !haToken || authErrorReported) return false;
 
-    var url = getHaApiUrl('/api/services/' + domain + '/' + service + (returnResponse ? '?return_response' : ''));
+    var url = getHaApiUrl(
+      '/api/services/' +
+        domain +
+        '/' +
+        service +
+        (returnResponse ? '?return_response' : ''),
+    );
     var xhr = new XMLHttpRequest();
     xhr.open('POST', url, true);
     xhr.setRequestHeader('Authorization', 'Bearer ' + haToken);
     xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.onreadystatechange = function() {
+    xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
       if (xhr.status >= 200 && xhr.status < 300) {
         var response = null;
         if (xhr.responseText) {
-          try { response = JSON.parse(xhr.responseText); } catch (e) {
-            reportHavenError('REST SERVICE JSON ERROR', (label || domain + '.' + service) + '\n' + e.message);
+          try {
+            response = JSON.parse(xhr.responseText);
+          } catch (e) {
+            reportHavenError(
+              'REST SERVICE JSON ERROR',
+              (label || domain + '.' + service) + '\n' + e.message,
+            );
             return;
           }
         }
@@ -7093,41 +8665,75 @@
         return;
       }
       if (isAuthStatus(xhr.status)) {
-        handleRestAuthWarning('REST service call', formatXhrFailure(xhr, url, label || (domain + '.' + service)));
+        handleRestAuthWarning(
+          'REST service call',
+          formatXhrFailure(xhr, url, label || domain + '.' + service),
+        );
       } else {
-        reportHavenError('REST SERVICE ERROR', formatXhrFailure(xhr, url, label || (domain + '.' + service)));
+        reportHavenError(
+          'REST SERVICE ERROR',
+          formatXhrFailure(xhr, url, label || domain + '.' + service),
+        );
       }
       if (callback) callback(null);
     };
-    xhr.onerror = function() {
-      reportHavenError('REST SERVICE ERROR', formatXhrFailure(xhr, url, (label || domain + '.' + service) + ' hit a network error.'));
+    xhr.onerror = function () {
+      reportHavenError(
+        'REST SERVICE ERROR',
+        formatXhrFailure(
+          xhr,
+          url,
+          (label || domain + '.' + service) + ' hit a network error.',
+        ),
+      );
       if (callback) callback(null);
     };
     xhr.send(JSON.stringify(mergeServiceData(entityId, data)));
     return true;
   }
 
-  function callHaService(domain, service, entityId, data, returnResponse, callback, label) {
+  function callHaService(
+    domain,
+    service,
+    entityId,
+    data,
+    returnResponse,
+    callback,
+    label,
+  ) {
     if (!isRestOnlyMode() && wsAuthenticated && ws && ws.readyState === 1) {
       var id = msgId++;
-      var payload = { id: id, type: 'call_service', domain: domain, service: service };
+      var payload = {
+        id: id,
+        type: 'call_service',
+        domain: domain,
+        service: service,
+      };
       if (entityId) payload.target = { entity_id: entityId };
       if (data) payload.service_data = data;
       if (returnResponse) payload.return_response = true;
       if (callback) pendingRequests[id] = callback;
-      trackWsRequest(id, label || (domain + '.' + service), !callback);
+      trackWsRequest(id, label || domain + '.' + service, !callback);
       if (wsSend(payload)) return true;
       if (callback) delete pendingRequests[id];
       takeWsRequestMeta(id);
     }
 
-    return callServiceRest(domain, service, entityId, data, returnResponse, callback, label);
+    return callServiceRest(
+      domain,
+      service,
+      entityId,
+      data,
+      returnResponse,
+      callback,
+      label,
+    );
   }
 
   function startRestFallbackPolling() {
     if (restFallbackTimer || !haToken || authErrorReported) return;
     fetchAllStatesRest();
-    restFallbackTimer = setInterval(function() {
+    restFallbackTimer = setInterval(function () {
       if (!wsAuthenticated) fetchAllStatesRest();
     }, REST_FALLBACK_POLL_MS);
   }
@@ -7156,7 +8762,10 @@
     try {
       ws = new WebSocket(wsUrl);
     } catch (e) {
-      reportHavenError('WEBSOCKET ERROR', wsUrl + '\n' + (e && e.message ? e.message : e));
+      reportHavenError(
+        'WEBSOCKET ERROR',
+        wsUrl + '\n' + (e && e.message ? e.message : e),
+      );
       setConnStatus('disconnected');
       startRestFallbackPolling();
       scheduleReconnect();
@@ -7171,7 +8780,9 @@
 
     ws.onmessage = function (evt) {
       var msg;
-      try { msg = JSON.parse(evt.data); } catch (e) {
+      try {
+        msg = JSON.parse(evt.data);
+      } catch (e) {
         reportHavenError('WEBSOCKET JSON ERROR', e.message + '\n' + evt.data);
         return;
       }
@@ -7188,34 +8799,48 @@
 
     ws.onclose = function (evt) {
       var wasAuthenticated = wsAuthenticated;
-      wsLastCloseCode = evt && evt.code !== undefined ? String(evt.code) : 'unknown';
+      wsLastCloseCode =
+        evt && evt.code !== undefined ? String(evt.code) : 'unknown';
       wsLastCloseReason = evt && evt.reason ? String(evt.reason) : '';
       wsAuthenticated = false;
       setConnStatus('disconnected');
       startRestFallbackPolling();
-      if (!wasAuthenticated && wsLastMessageType === 'none' && !wsHandshakeCloseReported) {
+      if (
+        !wasAuthenticated &&
+        wsLastMessageType === 'none' &&
+        !wsHandshakeCloseReported
+      ) {
         scheduleWsHandshakeClosedReport();
       }
       scheduleReconnect();
     };
 
-    setTimeout(function() {
+    setTimeout(function () {
       if (ws === socketRef && !wsAuthenticated) startRestFallbackPolling();
     }, 5000);
 
-    setTimeout(function() {
-      if (ws !== socketRef || wsAuthenticated || restStateFetchSucceeded || wsAuthDiagnosticReported) return;
+    setTimeout(function () {
+      if (
+        ws !== socketRef ||
+        wsAuthenticated ||
+        restStateFetchSucceeded ||
+        wsAuthDiagnosticReported
+      )
+        return;
       wsAuthDiagnosticReported = true;
-      reportHavenError('WEBSOCKET AUTH PENDING', [
-        'WebSocket did not complete Home Assistant authentication.',
-        ''
-      ].concat(getAuthDiagnosticLines()).concat([
-        '',
-        'If the last message is none, the Kindle never reached Home Assistant WebSocket handshake.',
-        'If the last message is auth_required and auth sends is 0, the Kindle could not send the auth message.',
-        'If the last message is auth_required and auth sends is above 0, Home Assistant did not answer the auth message.',
-        'If the socket never opened, the Kindle browser or network path is blocking WebSocket.'
-      ]).join('\n'));
+      reportHavenError(
+        'WEBSOCKET AUTH PENDING',
+        ['WebSocket did not complete Home Assistant authentication.', '']
+          .concat(getAuthDiagnosticLines())
+          .concat([
+            '',
+            'If the last message is none, the Kindle never reached Home Assistant WebSocket handshake.',
+            'If the last message is auth_required and auth sends is 0, the Kindle could not send the auth message.',
+            'If the last message is auth_required and auth sends is above 0, Home Assistant did not answer the auth message.',
+            'If the socket never opened, the Kindle browser or network path is blocking WebSocket.',
+          ])
+          .join('\n'),
+      );
     }, 12000);
   }
 
@@ -7229,7 +8854,7 @@
         return true;
       }
       wsLastSendStatus = type + ' skipped; state=' + getWebSocketStateLabel();
-    } catch(e) {
+    } catch (e) {
       wsLastSendStatus = type + ' failed; ' + (e && e.message ? e.message : e);
       console.warn('HAven: wsSend failed:', e.message);
     }
@@ -7237,10 +8862,13 @@
   }
 
   function sendWebSocketAuthWithRetry(socketRef, delayMs) {
-    setTimeout(function() {
+    setTimeout(function () {
       if (ws !== socketRef || wsAuthenticated || authErrorReported) return;
       wsAuthSendAttempts += 1;
-      if (!wsSend({ type: 'auth', access_token: haToken }) && wsAuthSendAttempts < 3) {
+      if (
+        !wsSend({ type: 'auth', access_token: haToken }) &&
+        wsAuthSendAttempts < 3
+      ) {
         sendWebSocketAuthWithRetry(socketRef, 350);
       }
     }, delayMs || 0);
@@ -7269,7 +8897,14 @@
         break;
 
       case 'auth_invalid':
-        handleAuthFailure('WebSocket auth', 'Home Assistant returned auth_invalid from ' + haUrl + '/api/websocket' + '\n' + formatErrorForOverlay(msg));
+        handleAuthFailure(
+          'WebSocket auth',
+          'Home Assistant returned auth_invalid from ' +
+            haUrl +
+            '/api/websocket' +
+            '\n' +
+            formatErrorForOverlay(msg),
+        );
         break;
 
       case 'result':
@@ -7278,7 +8913,11 @@
         if (pendingRequests[msg.id]) {
           var cb = pendingRequests[msg.id];
           delete pendingRequests[msg.id];
-          if (!msg.success) reportHavenError('WEBSOCKET RESULT ERROR', formatWsResultError(msg, meta));
+          if (!msg.success)
+            reportHavenError(
+              'WEBSOCKET RESULT ERROR',
+              formatWsResultError(msg, meta),
+            );
           cb(msg.success ? msg.result : null);
           break;
         }
@@ -7287,7 +8926,10 @@
             if (meta.label === 'subscribe haven_command') wsCommandSubId = null;
             break;
           }
-          reportHavenError('WEBSOCKET RESULT ERROR', formatWsResultError(msg, meta));
+          reportHavenError(
+            'WEBSOCKET RESULT ERROR',
+            formatWsResultError(msg, meta),
+          );
           break;
         }
         if (msg.success && msg.result && isArray(msg.result)) {
@@ -7302,8 +8944,8 @@
 
       case 'event':
         if (msg.event && msg.event.event_type === 'state_changed') {
-          var data    = msg.event.data;
-          var entId   = data.entity_id;
+          var data = msg.event.data;
+          var entId = data.entity_id;
           var newState = data.new_state;
 
           // Update cache
@@ -7350,21 +8992,18 @@
       var page = parseInt(data.page, 10);
       resetScreensaverTimer();
       if (!isNaN(page)) navigateTo(page);
-
     } else if (action === 'wake') {
       resetScreensaverTimer();
-
     } else if (action === 'dim') {
       activateScreensaver();
-
     } else if (action === 'speak') {
       if (!data.text || !window.speechSynthesis) return;
       // Cancel any current speech before starting new utterance
       window.speechSynthesis.cancel();
       var utt = new SpeechSynthesisUtterance(String(data.text));
       if (data.volume !== undefined) utt.volume = parseFloat(data.volume);
-      if (data.rate   !== undefined) utt.rate   = parseFloat(data.rate);
-      if (data.pitch  !== undefined) utt.pitch  = parseFloat(data.pitch);
+      if (data.rate !== undefined) utt.rate = parseFloat(data.rate);
+      if (data.pitch !== undefined) utt.pitch = parseFloat(data.pitch);
       window.speechSynthesis.speak(utt);
     }
   }
@@ -7383,7 +9022,15 @@
     }
 
     if (type === 'automation') {
-      callHaService('automation', 'trigger', action.entity_id, null, false, null, 'automation.trigger');
+      callHaService(
+        'automation',
+        'trigger',
+        action.entity_id,
+        null,
+        false,
+        null,
+        'automation.trigger',
+      );
       return;
     }
 
@@ -7391,7 +9038,12 @@
       var svc = action.service || '';
       var parts = svc.split('.');
       if (parts.length === 2) {
-        var payload = { id: msgId++, type: 'call_service', domain: parts[0], service: parts[1] };
+        var payload = {
+          id: msgId++,
+          type: 'call_service',
+          domain: parts[0],
+          service: parts[1],
+        };
         if (action.entity_id) payload.target = { entity_id: action.entity_id };
         if (action.data) {
           var map = {};
@@ -7403,32 +9055,57 @@
           if (dynamicValue !== undefined) map['$value'] = dynamicValue;
           payload.service_data = injectActionTokens(action.data, map);
         }
-        callHaService(payload.domain, payload.service, action.entity_id, payload.service_data, false, null, svc);
+        callHaService(
+          payload.domain,
+          payload.service,
+          action.entity_id,
+          payload.service_data,
+          false,
+          null,
+          svc,
+        );
       }
       return;
     }
 
     // Shorthand: { service: 'domain.service', entity_id: ... } without explicit type
     if (action.service) {
-      handleAction({ type: 'service', service: action.service, entity_id: action.entity_id, data: action.data }, dynamicValue, tokenMap);
+      handleAction(
+        {
+          type: 'service',
+          service: action.service,
+          entity_id: action.entity_id,
+          data: action.data,
+        },
+        dynamicValue,
+        tokenMap,
+      );
     }
   }
 
   // Recursively replace "$value" tokens in action.data for slider service calls.
   // Token replacement is raw-only: "$value" => current numeric slider value.
   function injectActionTokens(node, tokenMap) {
-    if (node && typeof node === 'string' && tokenMap && tokenMap[node] !== undefined) return tokenMap[node];
+    if (
+      node &&
+      typeof node === 'string' &&
+      tokenMap &&
+      tokenMap[node] !== undefined
+    )
+      return tokenMap[node];
 
     if (node && Object.prototype.toString.call(node) === '[object Array]') {
       var arr = [];
-      for (var i = 0; i < node.length; i++) arr.push(injectActionTokens(node[i], tokenMap));
+      for (var i = 0; i < node.length; i++)
+        arr.push(injectActionTokens(node[i], tokenMap));
       return arr;
     }
 
     if (node && typeof node === 'object') {
       var out = {};
       for (var k in node) {
-        if (node.hasOwnProperty(k)) out[k] = injectActionTokens(node[k], tokenMap);
+        if (node.hasOwnProperty(k))
+          out[k] = injectActionTokens(node[k], tokenMap);
       }
       return out;
     }
@@ -7444,13 +9121,14 @@
       var pure = node.match(/^\s*\{\{([\s\S]*?)\}\}\s*$/);
       if (pure) {
         var val = evaluateExpression(pure[1], state, null);
-        return (val === null || val === undefined) ? node : val;
+        return val === null || val === undefined ? node : val;
       }
       return applyTemplate(node, state, null);
     }
     if (node && Object.prototype.toString.call(node) === '[object Array]') {
       var arr = [];
-      for (var i = 0; i < node.length; i++) arr.push(resolveActionData(node[i], state));
+      for (var i = 0; i < node.length; i++)
+        arr.push(resolveActionData(node[i], state));
       return arr;
     }
     if (node && typeof node === 'object') {
@@ -7467,7 +9145,7 @@
     if (authErrorReported || isRestOnlyMode()) return;
     if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
     wsSubscriptionId = null;
-    wsCommandSubId   = null;
+    wsCommandSubId = null;
     wsReconnectTimer = setTimeout(function () {
       connectWebSocket();
     }, 5000);
@@ -7484,7 +9162,9 @@
   }
 
   function cleanString(value) {
-    return (value !== null && value !== undefined) ? String(value).replace(/^\s+|\s+$/g, '') : '';
+    return value !== null && value !== undefined
+      ? String(value).replace(/^\s+|\s+$/g, '')
+      : '';
   }
 
   function normalizeHaUrl(value) {
@@ -7495,13 +9175,17 @@
     var loc = window.location;
     if (loc && loc.protocol && loc.host) return loc.protocol + '//' + loc.host;
     if (loc && loc.protocol && loc.hostname) {
-      return loc.protocol + '//' + loc.hostname + (loc.port ? ':' + loc.port : '');
+      return (
+        loc.protocol + '//' + loc.hostname + (loc.port ? ':' + loc.port : '')
+      );
     }
-    return (loc && loc.origin) ? loc.origin : '';
+    return loc && loc.origin ? loc.origin : '';
   }
 
   function isSameOriginHaUrl() {
-    return !!haUrl && normalizeHaUrl(haUrl) === normalizeHaUrl(getCurrentOrigin());
+    return (
+      !!haUrl && normalizeHaUrl(haUrl) === normalizeHaUrl(getCurrentOrigin())
+    );
   }
 
   function getRestUrlMode() {
@@ -7514,8 +9198,10 @@
   }
 
   function isRestOnlyMode() {
-    return getConnectionMode() === 'rest' ||
-      !!(config && config.device && config.device.disable_websocket === true);
+    return (
+      getConnectionMode() === 'rest' ||
+      !!(config && config.device && config.device.disable_websocket === true)
+    );
   }
 
   function getHaApiUrl(path) {
@@ -7530,13 +9216,13 @@
     if (!device) return fallback || '';
     device = device.replace(/^devices\//i, '');
     device = device.replace(/\.json$/i, '');
-    return device || (fallback || '');
+    return device || fallback || '';
   }
 
   function setUrlParam(name, value) {
     var search = window.location.search.substring(1);
-    var parts  = search ? search.split('&') : [];
-    var found  = false;
+    var parts = search ? search.split('&') : [];
+    var found = false;
     for (var i = 0; i < parts.length; i++) {
       if (parts[i].split('=')[0] === name) {
         parts[i] = name + '=' + value;
@@ -7550,7 +9236,7 @@
 
   function getUrlParam(name) {
     var search = window.location.search.substring(1);
-    var parts  = search.split('&');
+    var parts = search.split('&');
     for (var i = 0; i < parts.length; i++) {
       var eq = parts[i].indexOf('=');
       var rawName = eq === -1 ? parts[i] : parts[i].slice(0, eq);
@@ -7568,7 +9254,8 @@
     canvas.innerHTML = '';
     canvas.style.background = '#1a0a0a';
     var err = document.createElement('div');
-    err.style.cssText = 'color:#fff;background:#000;border:4px solid #ffea00;padding:20px;font-size:18px;line-height:1.35;white-space:pre-wrap;';
+    err.style.cssText =
+      'color:#fff;background:#000;border:4px solid #ffea00;padding:20px;font-size:18px;line-height:1.35;white-space:pre-wrap;';
     err.textContent = '! HAven Error\n\n' + msg;
     canvas.appendChild(err);
   }
@@ -7579,5 +9266,4 @@
   } else {
     init();
   }
-
 })();

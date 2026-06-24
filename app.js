@@ -343,10 +343,41 @@
       if (isRestOnlyMode()) startRestFallbackPolling();
       else connectWebSocket();
     }
-    startClock();
-    startInternalTime();
+    if (configHasWidgetType('clock')) startClock();
+    if (configReferencesEntity(INTERNAL_TIME_ENTITY)) startInternalTime();
     if (!isPreview) initScreensaver();
     if (isPreview) setConnStatus('disconnected');
+  }
+
+  function configHasWidgetType(type) {
+    return configHasWidget(function (w) {
+      return w && w.type === type;
+    });
+  }
+
+  function configReferencesEntity(entityId) {
+    return configHasWidget(function (w) {
+      if (!w) return false;
+      return (
+        w.entity === entityId ||
+        w.entity2 === entityId ||
+        w.marker_entity === entityId ||
+        w.snapshot_entity === entityId ||
+        w.stream_entity === entityId
+      );
+    });
+  }
+
+  function configHasWidget(predicate) {
+    if (!config || !config.pages) return false;
+    for (var p = 0; p < config.pages.length; p++) {
+      var widgets = config.pages[p] && config.pages[p].widgets;
+      if (!widgets) continue;
+      for (var w = 0; w < widgets.length; w++) {
+        if (predicate(widgets[w])) return true;
+      }
+    }
+    return false;
   }
 
   function setupAnimationPauseHook() {
@@ -380,10 +411,12 @@
   }
 
   function setupRestInteractionRefresh() {
+    if (!isRestInteractionRefreshEnabled()) return;
     if (restInteractionRefreshBound) return;
     restInteractionRefreshBound = true;
 
     function queueRefresh() {
+      if (!isRestInteractionRefreshEnabled()) return;
       if (!haToken || authErrorReported) return;
       if (!isRestOnlyMode() && wsAuthenticated) return;
       if (restInteractionRefreshTimer) return;
@@ -908,12 +941,15 @@
     }
     // Clear all snapshot timers and pending sign requests from previous page
     for (var t = 0; t < activePageTimers.length; t++) {
-      clearInterval(activePageTimers[t].id);
-      if (activePageTimers[t].stop) activePageTimers[t].stop();
+      var timerRef = activePageTimers[t];
+      clearInterval(
+        timerRef && timerRef.id !== undefined ? timerRef.id : timerRef,
+      );
+      if (timerRef && timerRef.stop) timerRef.stop();
       // Cancel any pending WS requests this timer may have in flight
-      if (activePageTimers[t].pendingIds) {
-        for (var p = 0; p < activePageTimers[t].pendingIds.length; p++) {
-          delete pendingRequests[activePageTimers[t].pendingIds[p]];
+      if (timerRef && timerRef.pendingIds) {
+        for (var p = 0; p < timerRef.pendingIds.length; p++) {
+          delete pendingRequests[timerRef.pendingIds[p]];
         }
       }
     }
@@ -1480,6 +1516,7 @@
 
   // ---- Clock ------------------------------------------------
   function startClock() {
+    if (clockTimer) return;
     updateClock();
     clockTimer = setInterval(updateClock, 1000);
   }
@@ -6975,7 +7012,7 @@
     var timer = setInterval(function () {
       fetchHistoryStats(w, svg, 0);
     }, intervalMs);
-    activePageTimers.push(timer);
+    activePageTimers.push({ id: timer });
   }
 
   function openFullscreenChart(w) {
@@ -8900,10 +8937,10 @@
 
   function startRestFallbackPolling() {
     if (restFallbackTimer || !haToken || authErrorReported) return;
-    fetchAllStatesRest();
+    var pollMs = getRestPollIntervalMs();
     restFallbackTimer = setInterval(function () {
       if (!wsAuthenticated) fetchAllStatesRest();
-    }, REST_FALLBACK_POLL_MS);
+    }, pollMs);
   }
 
   function stopRestFallbackPolling() {
@@ -9370,6 +9407,22 @@
       getConnectionMode() === 'rest' ||
       !!(config && config.device && config.device.disable_websocket === true)
     );
+  }
+
+  function getRestPollIntervalMs() {
+    var raw = config && config.device && config.device.rest_poll_interval;
+    var seconds = parseInt(raw, 10);
+    if (isNaN(seconds) || seconds <= 0) return REST_FALLBACK_POLL_MS;
+    if (seconds < 5) seconds = 5;
+    return seconds * 1000;
+  }
+
+  function isRestInteractionRefreshEnabled() {
+    var value =
+      config && config.device
+        ? config.device.rest_interaction_refresh
+        : undefined;
+    return value !== false;
   }
 
   function getHaApiUrl(path) {

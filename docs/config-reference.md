@@ -74,6 +74,8 @@ HAven device configs are JSON files stored in the `devices/` folder. Each file d
 | `default_page`      | Page ID to load on startup and return to after inactivity.                                                                                                                                                                                        |
 | `return_to_default` | Seconds of inactivity before returning to `default_page`. Set to `0` or omit to disable.                                                                                                                                                          |
 | `connection_mode`   | Optional connection strategy. Omit or set `"websocket"` for live WebSocket updates. Set `"rest"` for older browsers that cannot keep the Home Assistant WebSocket open; HAven will poll REST state and call supported services over REST instead. |
+| `rest_poll_interval` | Seconds between periodic `/api/states` refreshes when REST polling is active. Default: `60`. Values below `5` are treated as `5`.                                                                                                                |
+| `rest_interaction_refresh` | Set to `false` to stop touch/mouse interactions from triggering an extra all-states REST refresh. Default: `true`.                                                                                                                         |
 | `screensaver`       | Optional screensaver config (see below). Omit to disable.                                                                                                                                                                                         |
 | `page_nav`          | Optional navigation dot styling (see below).                                                                                                                                                                                                      |
 | `page_navigation`   | Alias for `page_nav`. Same fields.                                                                                                                                                                                                                |
@@ -474,6 +476,8 @@ HAven is lightweight, but a few patterns can add overhead on a busy HA instance.
 **Override rules:** every `state_changed` event for a registered entity re-evaluates all of that widget's override rules. A page with 50 widgets each having 5 rules runs 250 condition checks per event. Keep override lists short and use `logic: "any"` where possible to short-circuit early.
 
 **`entity2` bindings:** each `entity2` registers an additional callback independently of `entity`. Use it only where a second entity genuinely drives the widget's appearance.
+
+**REST polling:** with `connection_mode: "rest"`, HAven refreshes all HA states on a timer. Use `rest_poll_interval` to lengthen that timer on battery devices. Set `rest_interaction_refresh: false` when taps should rely on optimistic widget updates and the next scheduled poll.
 
 **`history_chart` widgets:** each chart makes a `recorder/statistics_during_period` WebSocket request on page load and again on its `refresh_interval` timer. The default interval is 3600 seconds (1 hour). Only lower it when you need near-real-time charting.
 
